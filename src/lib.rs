@@ -1,174 +1,234 @@
+use alloy_primitives::hex::hex;
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
 use gadget_sdk as sdk;
+use gadget_sdk::keystore::BackendExt;
 use sdk::config::StdGadgetConfiguration;
 use sdk::ctx::{ServicesContext, TangleClientContext};
+use sdk::docker::{bollard::Docker, connect_to_docker, Container};
 use sdk::event_listener::tangle::jobs::{services_post_processor, services_pre_processor};
 use sdk::event_listener::tangle::TangleEventListener;
-use sdk::executor::process::manager::GadgetProcessManager;
 use sdk::tangle_subxt::tangle_testnet_runtime::api::services::events::JobCalled;
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::sync::{Arc, LazyLock};
-
-pub mod hyperlane;
-use crate::hyperlane::{CoreConfig, WarpRouteConfig};
-
-pub mod runner;
-use runner::run_and_focus_multiple;
-
-static HYPERLANE_KEY: LazyLock<String> =
-    LazyLock::new(|| std::env::var("HYP_KEY").expect("HYP_KEY environment variable not set"));
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(TangleClientContext, ServicesContext)]
 pub struct HyperlaneContext {
     #[config]
     pub env: StdGadgetConfiguration,
+    data_dir: PathBuf,
+    connection: Arc<Docker>,
+    container: Mutex<Option<String>>,
+}
+
+const IMAGE: &str = "gcr.io/abacus-labs-dev/hyperlane-agent:main";
+impl HyperlaneContext {
+    pub async fn new(env: StdGadgetConfiguration, data_dir: PathBuf) -> Result<Self> {
+        let connection = connect_to_docker(None).await?;
+        Ok(Self {
+            env,
+            data_dir,
+            connection,
+            container: Mutex::new(None),
+        })
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn spinup_container(&self) -> Result<()> {
+        let mut container_guard = self.container.lock().await;
+        if container_guard.is_some() {
+            return Ok(());
+        }
+
+        tracing::info!("Spinning up new container");
+
+        // TODO: Bollard isn't pulling the image for some reason?
+        let output = Command::new("docker").args(["pull", IMAGE]).output()?;
+        if !output.status.success() {
+            return Err(eyre!("Docker pull failed"));
+        }
+
+        let mut container = Container::new(&self.connection, IMAGE);
+
+        let keystore = self.env.keystore()?;
+        let ecdsa = keystore.ecdsa_key()?.alloy_key()?;
+        let secret = hex::encode(ecdsa.to_bytes());
+
+        let mut binds = Vec::new();
+
+        let hyperlane_db_path = self.hyperlane_db_path();
+        if !hyperlane_db_path.exists() {
+            tracing::warn!("Hyperlane DB does not exist, creating...");
+            std::fs::create_dir_all(&hyperlane_db_path)?;
+            tracing::info!("Hyperlane DB created at `{}`", hyperlane_db_path.display());
+        }
+
+        binds.push(format!("{}:/hyperlane_db", hyperlane_db_path.display()));
+
+        let agent_config_path = self.agent_config_path();
+        if agent_config_path.exists() {
+            binds.push(format!(
+                "{}:/config/agent-config.json:ro",
+                agent_config_path.to_string_lossy()
+            ));
+        }
+
+        let relay_chains_path = self.relay_chains_path();
+        if relay_chains_path.exists() {
+            let relay_chains = std::fs::read_to_string(relay_chains_path)?;
+            container.env([format!("HYP_RELAYCHAINS={relay_chains}")]);
+        }
+
+        container.binds(binds).cmd([
+            "./relayer",
+            "--db /hyperlane_db",
+            "--defaultSigner.key",
+            &format!("0x{secret}"),
+        ]);
+
+        container.start(false).await?;
+        *container_guard = container.id().map(ToString::to_string);
+
+        // Allow time to spin up
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+
+        let Ok(status) = container.status().await else {
+            return Err(eyre!("Failed to get status of container, Docker issue?"));
+        };
+
+        // Container is down, something's wrong.
+        if !status.unwrap().is_active() {
+            return Err(eyre!("Failed to start container, config error?"));
+        }
+
+        Ok(())
+    }
+
+    async fn revert_config(&self) -> Result<()> {
+        tracing::error!("Container failed to start with new config, reverting");
+
+        self.remove_existing_container().await?;
+
+        let original_config_path = self.original_agent_config_path();
+        if !original_config_path.exists() {
+            // There is no config to revert
+            return Err(eyre!("Config failed to apply, with no fallback"));
+        }
+
+        let config_path = self.agent_config_path();
+
+        tracing::debug!(
+            "Moving `{}` to `{}`",
+            original_config_path.display(),
+            config_path.display()
+        );
+        std::fs::rename(original_config_path, config_path)?;
+
+        let original_relay_chains = self.original_relay_chains_path();
+        if original_relay_chains.exists() {
+            let relay_chains_path = self.relay_chains_path();
+            tracing::debug!(
+                "Moving `{}` to `{}`",
+                original_relay_chains.display(),
+                relay_chains_path.display(),
+            );
+            std::fs::rename(original_relay_chains, relay_chains_path)?;
+        }
+
+        self.spinup_container().await?;
+        Ok(())
+    }
+
+    async fn remove_existing_container(&self) -> Result<()> {
+        let mut container_id = self.container.lock().await;
+        if let Some(container_id) = container_id.take() {
+            tracing::warn!("Removing existing container...");
+            let mut c = Container::from_id(&self.connection, container_id).await?;
+            c.stop().await?;
+            c.remove(None).await?;
+        }
+
+        Ok(())
+    }
+
+    fn hyperlane_db_path(&self) -> PathBuf {
+        self.data_dir.join("hyperlane_db")
+    }
+
+    fn agent_config_path(&self) -> PathBuf {
+        self.data_dir.join("agent-config.json")
+    }
+
+    fn relay_chains_path(&self) -> PathBuf {
+        self.data_dir.join("relay_chains.txt")
+    }
+
+    fn original_agent_config_path(&self) -> PathBuf {
+        self.data_dir.join("agent-config.json.orig")
+    }
+
+    fn original_relay_chains_path(&self) -> PathBuf {
+        self.data_dir.join("relay_chains.txt.orig")
+    }
 }
 
 #[sdk::job(
     id = 0,
-    params(config, advanced, existing_core_config),
+    params(config, relay_chains),
     result(_),
     event_listener(
-        listener = TangleEventListener<JobCalled, Arc<HyperlaneContext>>,
+        listener = TangleEventListener<Arc<HyperlaneContext>, JobCalled>,
         pre_processor = services_pre_processor,
         post_processor = services_post_processor,
     ),
 )]
-pub async fn operate_a_warp_route(
+pub async fn set_config(
     ctx: Arc<HyperlaneContext>,
-    config: Vec<u8>,
-    advanced: bool,
-    existing_core_config: Option<Vec<u8>>,
-) -> Result<u64, Infallible> {
-    // 1. Deploy or use an existing set of Hyperlane contracts
-    //     `hyperlane registry init`
-    //     `hyperlane core init --advanced [config]` for non-trusted relayer setup
-    //     `hyperlane core init` just gives you a trusted relayer setup (relayer address is deployer)
-    //     `hyperlane core deploy`
-    let mut manager = GadgetProcessManager::new();
-    match existing_core_config {
-        Some(existing_core_config) => {
-            // Deserialize the existing core config
-            let core_config = CoreConfig::try_from(&existing_core_config[..]).unwrap_or_else(|e| {
-                eprintln!("Failed to deserialize existing core config: {}", e);
-                std::process::exit(1);
-            });
-
-            // Log the deserialized core config for debugging
-            println!("Deserialized existing core config: {:?}", core_config);
-
-            // Use the existing core config in subsequent operations
-            let commands = vec![
-                ("run registry init", "hyperlane registry init"),
-                ("run core init --advanced", "hyperlane core init --advanced"),
-                ("run core deploy", "hyperlane core deploy"),
-            ];
-            let outputs = run_and_focus_multiple(&mut manager, commands)
-                .await
-                .unwrap();
-        }
-        None => {
-            let commands = vec![
-                ("run registry init", "hyperlane registry init"),
-                (
-                    "run core init advanced",
-                    "hyperlane core init --advanced [config]",
-                ),
-                ("run core deploy", "hyperlane core deploy"),
-            ];
-            let outputs = run_and_focus_multiple(&mut manager, commands)
-                .await
-                .unwrap();
-        }
+    config: String,
+    relay_chains: String,
+) -> Result<u64> {
+    // TODO: First step, verify the config is valid
+    if relay_chains.is_empty() || !relay_chains.contains(',') {
+        return Err(eyre!(
+            "`relay_chains` is invalid, ensure it contains at least two chains"
+        ));
     }
 
-    // 2. `hyperlane warp init` - Initialize the Hyperlane warp route
-    // Deserialize the config into the WarpRouteConfig struct
-    let warp_route_config = WarpRouteConfig::try_from(&config[..]).unwrap_or_else(|e| {
-        eprintln!("Failed to deserialize config: {}", e);
-        std::process::exit(1);
-    });
+    ctx.remove_existing_container().await?;
 
-    // Log the deserialized config for debugging
-    println!("Deserialized WarpRouteConfig: {:?}", warp_route_config);
-
-    // 3. `hyperlane warp deploy` - Deploy the Hyperlane warp route
-    let should_i_deploy = true; // Decide if this operator should deploy the warp route
-    if should_i_deploy {
-        let commands = vec![("run warp deploy", "hyperlane warp deploy")];
-        let outputs = run_and_focus_multiple(&mut manager, commands)
-            .await
-            .unwrap();
+    let config_path = ctx.agent_config_path();
+    if config_path.exists() {
+        let orig_config_path = ctx.original_agent_config_path();
+        tracing::info!("Config path exists, overwriting.");
+        std::fs::rename(&config_path, orig_config_path)?;
     }
 
-    // 4. Update the core config of Hyperlane contracts on those chains
-    // i.e. on Holesky we do
-    //      `hyperlane core read --chain holesky`
-    //      `hyperlane core apply --chain holesky`
-    // i.e. on Tangle we do:
-    //     `hyperlane core read --chain tangle`
-    //     `hyperlane core apply --chain tangle`
-    //
-    // Note: Core apply can only be run by the person who deployed hyperlane core contracts
-    let mut outputs = HashMap::new();
+    let relay_chains_path = ctx.relay_chains_path();
+    if relay_chains_path.exists() {
+        let orig_relay_chains_path = ctx.original_relay_chains_path();
+        tracing::info!("Relay chains list exists, overwriting.");
+        std::fs::rename(&relay_chains_path, orig_relay_chains_path)?;
+    }
 
-    // Read Holesky core config
-    let holesky_read_command = (
-        "run core read --chain holesky",
-        "hyperlane core read --chain holesky",
-    );
-    outputs.insert(
-        holesky_read_command.0.to_string(),
-        run_and_focus_multiple(&mut manager, vec![holesky_read_command])
-            .await
-            .unwrap()
-            .remove(holesky_read_command.0)
-            .unwrap(),
-    );
+    // TODO: Make this optional
+    if config == "TODO" {
+        tracing::info!("No config provided, using defaults");
+    } else {
+        std::fs::write(&config_path, config)?;
+        tracing::info!("New config written to: {}", config_path.display());
+    }
 
-    // Apply Holesky core config
-    let holesky_apply_command = (
-        "run core apply --chain holesky",
-        format!(
-            "hyperlane core apply --chain holesky --input '{}'",
-            outputs["run core read --chain holesky"]
-        ),
-    );
-    run_and_focus_multiple(
-        &mut manager,
-        vec![(holesky_apply_command.0, &holesky_apply_command.1)],
-    )
-    .await
-    .unwrap();
+    std::fs::write(&relay_chains_path, relay_chains)?;
+    tracing::info!("Relay chains written to: {}", config_path.display());
 
-    // Read Tangle core config
-    let tangle_read_command = (
-        "run core read --chain tangletestnet",
-        "hyperlane core read --chain tangletestnet",
-    );
-    outputs.insert(
-        tangle_read_command.0.to_string(),
-        run_and_focus_multiple(&mut manager, vec![tangle_read_command])
-            .await
-            .unwrap()
-            .remove(tangle_read_command.0)
-            .unwrap(),
-    );
+    if ctx.spinup_container().await.is_ok() {
+        return Ok(0);
+    }
 
-    // Apply Tangle core config
-    let tangle_apply_command = (
-        "run core apply --chain tangletestnet",
-        format!(
-            "hyperlane core apply --chain tangletestnet --input '{}'",
-            outputs["run core read --chain tangletestnet"]
-        ),
-    );
-    run_and_focus_multiple(
-        &mut manager,
-        vec![(tangle_apply_command.0, &tangle_apply_command.1)],
-    )
-    .await
-    .unwrap();
+    // Something went wrong spinning up the container, possibly bad config. Try to revert.
+    ctx.revert_config().await?;
 
     Ok(0)
 }
