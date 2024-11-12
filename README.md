@@ -35,6 +35,32 @@ $ cargo tangle blueprint deploy
 Upon deployment, the Blueprint will be able to be instanced and executed by any Tangle operator registered on the
 blueprint.
 
+### Starting a relayer
+
+There are two ways to start a relayer:
+
+1. With user-generated configs, and optional relay chains
+2. With the [default configs](https://github.com/hyperlane-xyz/hyperlane-monorepo/tree/main/rust/main/config), and
+   specified relay chains
+
+Once you've determined which path to choose, you can call the `set_config` job.
+
+#### Set config job
+
+To spin up a relayer instance, use the `set_config` job:
+
+This job will save the existing config, attempt to start the relayer with the new config, and on failure will spin back
+up using the old config.
+
+It has two parameters:
+
+1. `config`: An optional config file, if not specified it will use
+   the [defaults](https://github.com/hyperlane-xyz/hyperlane-monorepo/tree/main/rust/main/config).
+2. `relay_chains`: A comma-separated list of origin and destination chains for relaying messages between.
+
+**NOTE: Ensure that when using a manually specified config, `relayChains` is specified, either as a job parameter or in
+the config itself**
+
 ## 🔗 External Links
 
 - [Hyperlane Documentation](https://docs.hyperlane.xyz)
