@@ -186,10 +186,10 @@ impl HyperlaneContext {
 )]
 pub async fn set_config(
     ctx: Arc<HyperlaneContext>,
-    config: String,
+    config: Option<String>,
     relay_chains: String,
 ) -> Result<u64> {
-    // TODO: First step, verify the config is valid
+    // TODO: First step, verify the config is valid. Is there an easy way to do so?
     if relay_chains.is_empty() || !relay_chains.contains(',') {
         return Err(eyre!(
             "`relay_chains` is invalid, ensure it contains at least two chains"
@@ -212,12 +212,12 @@ pub async fn set_config(
         std::fs::rename(&relay_chains_path, orig_relay_chains_path)?;
     }
 
-    // TODO: Make this optional
-    if config == "TODO" {
-        tracing::info!("No config provided, using defaults");
-    } else {
-        std::fs::write(&config_path, config)?;
-        tracing::info!("New config written to: {}", config_path.display());
+    match config {
+        Some(config) => {
+            std::fs::write(&config_path, config)?;
+            tracing::info!("New config written to: {}", config_path.display());
+        }
+        None => tracing::info!("No config provided, using defaults"),
     }
 
     std::fs::write(&relay_chains_path, relay_chains)?;

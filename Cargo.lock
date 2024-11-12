@@ -4484,6 +4484,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gadget-blueprint-serde"
+version = "0.1.1"
+dependencies = [
+ "paste",
+ "serde",
+ "tangle-subxt",
+]
+
+[[package]]
 name = "gadget-context-derive"
 version = "0.2.0"
 dependencies = [
@@ -4546,6 +4555,7 @@ dependencies = [
  "futures",
  "gadget-blueprint-proc-macro",
  "gadget-blueprint-proc-macro-core 0.1.5",
+ "gadget-blueprint-serde",
  "gadget-context-derive",
  "gadget-io",
  "getrandom",

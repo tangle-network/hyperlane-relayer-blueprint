@@ -121,8 +121,7 @@ mod e2e {
                 info!("Submitting job with params service ID: {service_id}, call ID: {call_id}");
 
                 // Pass the arguments
-                let config =
-                    Field::String(BoundedString(BoundedVec(String::from("TODO").into_bytes())));
+                let config = Field::None;
                 let relay_chains = Field::String(BoundedString(BoundedVec(
                     String::from("ethereum,polygon,avalanche").into_bytes(),
                 )));
