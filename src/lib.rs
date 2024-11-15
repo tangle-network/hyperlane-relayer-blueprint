@@ -56,8 +56,6 @@ impl HyperlaneContext {
         let ecdsa = keystore.ecdsa_key()?.alloy_key()?;
         let secret = hex::encode(ecdsa.to_bytes());
 
-        let mut binds = Vec::new();
-
         let hyperlane_db_path = self.hyperlane_db_path();
         if !hyperlane_db_path.exists() {
             tracing::warn!("Hyperlane DB does not exist, creating...");
@@ -65,23 +63,40 @@ impl HyperlaneContext {
             tracing::info!("Hyperlane DB created at `{}`", hyperlane_db_path.display());
         }
 
-        binds.push(format!("{}:/hyperlane_db", hyperlane_db_path.display()));
+        let mut binds = vec![format!("{}:/hyperlane_db", hyperlane_db_path.display())];
 
-        let agent_config_path = self.agent_config_path();
-        if agent_config_path.exists() {
+        let agent_configs_path = self.agent_configs_path();
+        let agent_configs_path_exists = agent_configs_path.exists();
+        if agent_configs_path_exists {
             binds.push(format!(
-                "{}:/config/agent-config.json:ro",
-                agent_config_path.to_string_lossy()
+                "{}:/config:ro",
+                agent_configs_path.to_string_lossy()
             ));
+        }
+
+        let mut env = Vec::new();
+
+        if agent_configs_path_exists {
+            let mut config_files = Vec::new();
+
+            let files = std::fs::read_dir(agent_configs_path)?;
+            for config in files {
+                let path = config?.path();
+                if path.is_file() {
+                    config_files.push(path.to_string_lossy().to_string());
+                }
+            }
+
+            env.push(format!("CONFIG_FILES={}", config_files.join(",")));
         }
 
         let relay_chains_path = self.relay_chains_path();
         if relay_chains_path.exists() {
             let relay_chains = std::fs::read_to_string(relay_chains_path)?;
-            container.env([format!("HYP_RELAYCHAINS={relay_chains}")]);
+            env.push(format!("HYP_RELAYCHAINS={relay_chains}"));
         }
 
-        container.binds(binds).cmd([
+        container.env(env).binds(binds).cmd([
             "./relayer",
             "--db /hyperlane_db",
             "--defaultSigner.key",
@@ -106,25 +121,25 @@ impl HyperlaneContext {
         Ok(())
     }
 
-    async fn revert_config(&self) -> Result<()> {
-        tracing::error!("Container failed to start with new config, reverting");
+    async fn revert_configs(&self) -> Result<()> {
+        tracing::error!("Container failed to start with new configs, reverting");
 
         self.remove_existing_container().await?;
 
-        let original_config_path = self.original_agent_config_path();
-        if !original_config_path.exists() {
+        let original_configs_path = self.original_agent_configs_path();
+        if !original_configs_path.exists() {
             // There is no config to revert
-            return Err(eyre!("Config failed to apply, with no fallback"));
+            return Err(eyre!("Configs failed to apply, with no fallback"));
         }
 
-        let config_path = self.agent_config_path();
+        let configs_path = self.agent_configs_path();
 
         tracing::debug!(
             "Moving `{}` to `{}`",
-            original_config_path.display(),
-            config_path.display()
+            original_configs_path.display(),
+            configs_path.display()
         );
-        std::fs::rename(original_config_path, config_path)?;
+        std::fs::rename(original_configs_path, configs_path)?;
 
         let original_relay_chains = self.original_relay_chains_path();
         if original_relay_chains.exists() {
@@ -157,16 +172,16 @@ impl HyperlaneContext {
         self.data_dir.join("hyperlane_db")
     }
 
-    fn agent_config_path(&self) -> PathBuf {
-        self.data_dir.join("agent-config.json")
+    fn agent_configs_path(&self) -> PathBuf {
+        self.data_dir.join("agent_configs")
     }
 
     fn relay_chains_path(&self) -> PathBuf {
         self.data_dir.join("relay_chains.txt")
     }
 
-    fn original_agent_config_path(&self) -> PathBuf {
-        self.data_dir.join("agent-config.json.orig")
+    fn original_agent_configs_path(&self) -> PathBuf {
+        self.data_dir.join("agent_configs.orig")
     }
 
     fn original_relay_chains_path(&self) -> PathBuf {
@@ -176,7 +191,7 @@ impl HyperlaneContext {
 
 #[sdk::job(
     id = 0,
-    params(config, relay_chains),
+    params(configs, relay_chains),
     result(_),
     event_listener(
         listener = TangleEventListener<Arc<HyperlaneContext>, JobCalled>,
@@ -186,7 +201,7 @@ impl HyperlaneContext {
 )]
 pub async fn set_config(
     ctx: Arc<HyperlaneContext>,
-    config: Option<String>,
+    configs: Option<Vec<String>>,
     relay_chains: String,
 ) -> Result<u64> {
     // TODO: First step, verify the config is valid. Is there an easy way to do so?
@@ -198,11 +213,11 @@ pub async fn set_config(
 
     ctx.remove_existing_container().await?;
 
-    let config_path = ctx.agent_config_path();
-    if config_path.exists() {
-        let orig_config_path = ctx.original_agent_config_path();
-        tracing::info!("Config path exists, overwriting.");
-        std::fs::rename(&config_path, orig_config_path)?;
+    let configs_path = ctx.agent_configs_path();
+    if configs_path.exists() {
+        let orig_configs_path = ctx.original_agent_configs_path();
+        tracing::info!("Configs path exists, overwriting.");
+        std::fs::rename(&configs_path, orig_configs_path)?;
     }
 
     let relay_chains_path = ctx.relay_chains_path();
@@ -212,23 +227,26 @@ pub async fn set_config(
         std::fs::rename(&relay_chains_path, orig_relay_chains_path)?;
     }
 
-    match config {
-        Some(config) => {
-            std::fs::write(&config_path, config)?;
-            tracing::info!("New config written to: {}", config_path.display());
+    match configs {
+        Some(configs) if !configs.is_empty() => {
+            // TODO: Limit number of configs?
+            for (index, config) in configs.iter().enumerate() {
+                std::fs::write(configs_path.join(format!("{index}.json")), config)?;
+            }
+            tracing::info!("New configs written to: {}", configs_path.display());
         }
-        None => tracing::info!("No config provided, using defaults"),
+        _ => tracing::info!("No configs provided, using defaults"),
     }
 
     std::fs::write(&relay_chains_path, relay_chains)?;
-    tracing::info!("Relay chains written to: {}", config_path.display());
+    tracing::info!("Relay chains written to: {}", configs_path.display());
 
     if ctx.spinup_container().await.is_ok() {
         return Ok(0);
     }
 
     // Something went wrong spinning up the container, possibly bad config. Try to revert.
-    ctx.revert_config().await?;
+    ctx.revert_configs().await?;
 
     Ok(0)
 }

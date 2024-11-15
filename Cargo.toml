@@ -24,12 +24,12 @@ alloy-primitives = "0.7.2"
 thiserror = { version = "1.0.64", default-features = false }
 
 [dependencies.gadget-sdk]
-path = "../gadget/sdk"
+git = "https://github.com/tangle-network/gadget"
 features = ["getrandom"]
 
 [dev-dependencies]
-cargo-tangle = { path = "../gadget/cli" }
-blueprint-test-utils = { path = "../gadget/blueprint-test-utils", default-features = false, features = ["std"] }
+cargo-tangle = { git = "https://github.com/tangle-network/gadget" }
+blueprint-test-utils = { git = "https://github.com/tangle-network/gadget", default-features = false, features = ["std"] }
 tracing-subscriber = "0.3.18"
 
 [build-dependencies]
