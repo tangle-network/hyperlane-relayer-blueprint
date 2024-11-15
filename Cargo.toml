@@ -18,7 +18,7 @@ async-trait = "0.1"
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = { version = "1.0.128" }
 color-eyre = "0.6"
-tokio = { version = "1.39", default-features = false, features = ["full"] }
+tokio = { version = "1.41", default-features = false, features = ["full"] }
 serde_yaml = "0.9.34"
 alloy-primitives = "0.7.2"
 thiserror = { version = "1.0.64", default-features = false }
