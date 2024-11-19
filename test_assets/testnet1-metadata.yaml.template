@@ -1,0 +1,12 @@
+chainId: 31337
+displayName: Testnet1
+domainId: 31337
+isTestnet: true
+name: testnet1
+nativeToken:
+  decimals: 18
+  name: Ether
+  symbol: ETH
+protocol: ethereum
+rpcUrls:
+  - http: http://{RPC_URL}
