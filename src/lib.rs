@@ -2,6 +2,7 @@ use alloy_primitives::hex::hex;
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use gadget_sdk as sdk;
+use gadget_sdk::docker::bollard::network::ConnectNetworkOptions;
 use gadget_sdk::keystore::BackendExt;
 use sdk::config::StdGadgetConfiguration;
 use sdk::ctx::{ServicesContext, TangleClientContext};
@@ -83,7 +84,10 @@ impl HyperlaneContext {
             for config in files {
                 let path = config?.path();
                 if path.is_file() {
-                    config_files.push(path.to_string_lossy().to_string());
+                    config_files.push(format!(
+                        "/config/{}",
+                        path.file_name().unwrap().to_string_lossy()
+                    ));
                 }
             }
 
@@ -96,12 +100,30 @@ impl HyperlaneContext {
             env.push(format!("HYP_RELAYCHAINS={relay_chains}"));
         }
 
-        container.env(env).binds(binds).cmd([
-            "./relayer",
-            "--db /hyperlane_db",
-            "--defaultSigner.key",
-            &format!("0x{secret}"),
-        ]);
+        container
+            .env(env)
+            .binds(binds)
+            .cmd([
+                "./relayer",
+                "--db /hyperlane_db",
+                "--defaultSigner.key",
+                &format!("0x{secret}"),
+            ])
+            .create()
+            .await?;
+
+        if self.env.test_mode {
+            let id = container.id().unwrap();
+            self.connection
+                .connect_network(
+                    "hyperlane_relayer_test_net",
+                    ConnectNetworkOptions {
+                        container: id,
+                        ..Default::default()
+                    },
+                )
+                .await?;
+        }
 
         container.start(false).await?;
         *container_guard = container.id().map(ToString::to_string);
@@ -109,9 +131,7 @@ impl HyperlaneContext {
         // Allow time to spin up
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
 
-        let Ok(status) = container.status().await else {
-            return Err(eyre!("Failed to get status of container, Docker issue?"));
-        };
+        let status = container.status().await?;
 
         // Container is down, something's wrong.
         if !status.unwrap().is_active() {
@@ -139,6 +159,7 @@ impl HyperlaneContext {
             original_configs_path.display(),
             configs_path.display()
         );
+        std::fs::remove_dir_all(&configs_path)?;
         std::fs::rename(original_configs_path, configs_path)?;
 
         let original_relay_chains = self.original_relay_chains_path();
@@ -156,7 +177,7 @@ impl HyperlaneContext {
         Ok(())
     }
 
-    async fn remove_existing_container(&self) -> Result<()> {
+    pub async fn remove_existing_container(&self) -> Result<()> {
         let mut container_id = self.container.lock().await;
         if let Some(container_id) = container_id.take() {
             tracing::warn!("Removing existing container...");
@@ -191,7 +212,7 @@ impl HyperlaneContext {
 
 #[sdk::job(
     id = 0,
-    params(configs, relay_chains),
+    params(config_urls, relay_chains),
     result(_),
     event_listener(
         listener = TangleEventListener<Arc<HyperlaneContext>, JobCalled>,
@@ -201,9 +222,23 @@ impl HyperlaneContext {
 )]
 pub async fn set_config(
     ctx: Arc<HyperlaneContext>,
-    configs: Option<Vec<String>>,
+    config_urls: Option<Vec<String>>,
     relay_chains: String,
 ) -> Result<u64> {
+    let mut configs = Vec::new();
+    if let Some(config_urls) = config_urls {
+        for config_url in config_urls {
+            // https://github.com/seanmonstar/reqwest/issues/178
+            let url = reqwest::Url::parse(&config_url)?;
+            if url.scheme() == "file" && ctx.env.test_mode {
+                let config = std::fs::read_to_string(url.to_file_path().unwrap())?;
+                configs.push(config);
+                continue;
+            }
+            configs.push(reqwest::get(config_url).await?.text().await?);
+        }
+    }
+
     // TODO: First step, verify the config is valid. Is there an easy way to do so?
     if relay_chains.is_empty() || !relay_chains.contains(',') {
         return Err(eyre!(
@@ -216,37 +251,37 @@ pub async fn set_config(
     let configs_path = ctx.agent_configs_path();
     if configs_path.exists() {
         let orig_configs_path = ctx.original_agent_configs_path();
-        tracing::info!("Configs path exists, overwriting.");
+        tracing::info!("Configs path exists, backing up.");
         std::fs::rename(&configs_path, orig_configs_path)?;
+        std::fs::create_dir_all(&configs_path)?;
     }
 
     let relay_chains_path = ctx.relay_chains_path();
     if relay_chains_path.exists() {
         let orig_relay_chains_path = ctx.original_relay_chains_path();
-        tracing::info!("Relay chains list exists, overwriting.");
+        tracing::info!("Relay chains list exists, backing up.");
         std::fs::rename(&relay_chains_path, orig_relay_chains_path)?;
     }
 
-    match configs {
-        Some(configs) if !configs.is_empty() => {
-            // TODO: Limit number of configs?
-            for (index, config) in configs.iter().enumerate() {
-                std::fs::write(configs_path.join(format!("{index}.json")), config)?;
-            }
-            tracing::info!("New configs written to: {}", configs_path.display());
+    std::fs::create_dir_all(&configs_path)?;
+    if configs.is_empty() {
+        tracing::info!("No configs provided, using defaults");
+    } else {
+        // TODO: Limit number of configs?
+        for (index, config) in configs.iter().enumerate() {
+            std::fs::write(configs_path.join(format!("{index}.json")), config)?;
         }
-        _ => tracing::info!("No configs provided, using defaults"),
+        tracing::info!("New configs written to: {}", configs_path.display());
     }
 
     std::fs::write(&relay_chains_path, relay_chains)?;
-    tracing::info!("Relay chains written to: {}", configs_path.display());
+    tracing::info!("Relay chains written to: {}", relay_chains_path.display());
 
-    if ctx.spinup_container().await.is_ok() {
-        return Ok(0);
+    if let Err(e) = ctx.spinup_container().await {
+        // Something went wrong spinning up the container, possibly bad config. Try to revert.
+        tracing::error!("{e}");
+        ctx.revert_configs().await?;
     }
-
-    // Something went wrong spinning up the container, possibly bad config. Try to revert.
-    ctx.revert_configs().await?;
 
     Ok(0)
 }
