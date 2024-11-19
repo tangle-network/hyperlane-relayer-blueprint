@@ -9,7 +9,7 @@ jobs:
   foundry-check:
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ ubuntu-latest ]
       fail-fast: true
 
     name: Foundry project
