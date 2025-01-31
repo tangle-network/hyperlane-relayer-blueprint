@@ -15,14 +15,13 @@ fn default_data_dir() -> PathBuf {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let data_dir;
-    match env.data_dir.clone() {
-        Some(dir) => data_dir = dir,
+    let data_dir = match env.data_dir.clone() {
+        Some(dir) => dir,
         None => {
             logging::warn!("Data dir not specified, using default");
-            data_dir = default_data_dir();
+            default_data_dir()
         }
-    }
+    };
 
     if !data_dir.exists() {
         logging::warn!("Data dir does not exist, creating");

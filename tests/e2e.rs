@@ -51,7 +51,7 @@ fn setup_temp_dir(
         let testnet1_metadata = std::fs::read_to_string(metadata_template_path).unwrap();
         std::fs::write(
             testnet_path.join("metadata.yaml"),
-            testnet1_metadata.replace("{RPC_URL}", &rpc_url),
+            testnet1_metadata.replace("{RPC_URL}", rpc_url),
         )
         .unwrap();
     }
