@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod e2e;
-
 use blueprint_sdk as sdk;
 use blueprint_sdk::runners::core::runner::BlueprintRunner;
 use color_eyre::Result;
