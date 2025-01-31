@@ -1,35 +1,24 @@
 use std::path::Path;
 use std::process::Command;
 use blueprint_sdk as sdk;
-use gadget_sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::bounded_collections::bounded_vec::BoundedVec;
-use gadget_sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::tangle_primitives::services::field::BoundedString;
-use gadget_sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::tangle_primitives::services::field::Field;
-use gadget_sdk::tangle_subxt::tangle_testnet_runtime::api::services::calls::types::call::Args;
-use blueprint_test_utils::test_ext::*;
-use blueprint_test_utils::*;
-use blueprint_test_utils::eigenlayer_test_env::start_anvil_testnet;
-use cargo_tangle::deploy::Opts;
-use gadget_sdk::error;
-use gadget_sdk::info;
-use gadget_sdk::docker::{bollard, connect_to_docker};
-use gadget_sdk::docker::bollard::container::RemoveContainerOptions;
-use gadget_sdk::docker::bollard::network::{ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions};
-use tempfile::TempDir;
+use blueprint_sdk::logging::setup_log;
+use blueprint_sdk::testing::tempfile;
+use blueprint_sdk::testing::tempfile::TempDir;
+use blueprint_sdk::testing::utils::anvil::start_anvil_testnet;
+use blueprint_sdk::{logging, tokio};
+use blueprint_sdk::tangle_subxt::tangle_testnet_runtime::api::services::calls::types::call::Args;
+use blueprint_sdk::testing::utils::harness::TestHarness;
+use blueprint_sdk::testing::utils::runner::TestEnv;
+use blueprint_sdk::testing::utils::tangle::{OutputValue, TangleTestHarness};
+use dockworker::bollard::network::{ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions};
+use dockworker::{bollard, DockerBuilder};
+use dockworker::bollard::container::RemoveContainerOptions;
+use sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::bounded_collections::bounded_vec::BoundedVec;
+use sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::tangle_primitives::services::field::BoundedString;
+use sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::tangle_primitives::services::field::Field;
 use testcontainers::ContainerAsync;
 use testcontainers::GenericImage;
-
-pub fn setup_testing_log() {
-    use tracing_subscriber::util::SubscriberInitExt;
-    let env_filter = tracing_subscriber::EnvFilter::from_default_env();
-    let _ = tracing_subscriber::fmt::SubscriberBuilder::default()
-        .without_time()
-        .with_target(true)
-        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
-        .with_env_filter(env_filter)
-        .with_test_writer()
-        .finish()
-        .try_init();
-}
+use hyperlane_relayer_blueprint::{HyperlaneContext, SetConfigEventHandler};
 
 const AGENT_CONFIG_TEMPLATE_PATH: &str = "./test_assets/agent-config.json.template";
 const CORE_CONFIG_PATH: &str = "./test_assets/core-config.yaml";
@@ -88,15 +77,15 @@ fn setup_temp_dir(
 const TESTNET1_STATE_PATH: &str = "./test_assets/testnet1-state.json";
 const TESTNET2_STATE_PATH: &str = "./test_assets/testnet2-state.json";
 
-async fn spinup_anvil_testnets() -> (
+async fn spinup_anvil_testnets() -> color_eyre::Result<(
     (ContainerAsync<GenericImage>, String),
     (ContainerAsync<GenericImage>, String),
-) {
+)> {
     let (origin_container, _, _) = start_anvil_testnet(TESTNET1_STATE_PATH, false).await;
 
     let (dest_container, _, _) = start_anvil_testnet(TESTNET2_STATE_PATH, false).await;
 
-    let connection = connect_to_docker(None).await.unwrap();
+    let connection = DockerBuilder::new().await?;
     if let Err(e) = connection
         .create_network(CreateNetworkOptions {
             name: "hyperlane_relayer_test_net",
@@ -108,7 +97,7 @@ async fn spinup_anvil_testnets() -> (
             bollard::errors::Error::DockerResponseServerError {
                 status_code: 409, ..
             } => {}
-            _ => panic!("{e}"),
+            _ => return Err(e.into()),
         }
     }
 
@@ -120,8 +109,7 @@ async fn spinup_anvil_testnets() -> (
                 ..Default::default()
             },
         )
-        .await
-        .unwrap();
+        .await?;
 
     connection
         .connect_network(
@@ -131,13 +119,11 @@ async fn spinup_anvil_testnets() -> (
                 ..Default::default()
             },
         )
-        .await
-        .unwrap();
+        .await?;
 
     let origin_container_inspect = connection
         .inspect_container(origin_container.id(), None)
-        .await
-        .unwrap();
+        .await?;
     let origin_network_settings = origin_container_inspect
         .network_settings
         .unwrap()
@@ -147,8 +133,7 @@ async fn spinup_anvil_testnets() -> (
 
     let dest_container_inspect = connection
         .inspect_container(dest_container.id(), None)
-        .await
-        .unwrap();
+        .await?;
     let dest_network_settings = dest_container_inspect
         .network_settings
         .unwrap()
@@ -156,22 +141,53 @@ async fn spinup_anvil_testnets() -> (
         .unwrap()["hyperlane_relayer_test_net"]
         .clone();
 
-    (
+    Ok((
         (
             origin_container,
             origin_network_settings.ip_address.unwrap(),
         ),
         (dest_container, dest_network_settings.ip_address.unwrap()),
-    )
+    ))
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::needless_return)]
-async fn relayer() {
-    setup_testing_log();
+async fn relayer() -> color_eyre::Result<()> {
+    setup_log();
 
+    // Test logic is separated so that cleanup is performed regardless of failure
+    let res = relayer_test_inner().await;
+
+    // Cleanup network
+    let connection = DockerBuilder::new().await?;
+    let network = connection
+        .inspect_network(
+            "hyperlane_relayer_test_net",
+            None::<InspectNetworkOptions<String>>,
+        )
+        .await?;
+    for container in network.containers.unwrap().keys() {
+        connection
+            .remove_container(
+                container,
+                Some(RemoveContainerOptions {
+                    force: true,
+                    ..Default::default()
+                }),
+            )
+            .await?;
+    }
+
+    connection
+        .remove_network("hyperlane_relayer_test_net")
+        .await?;
+
+    res
+}
+
+async fn relayer_test_inner() -> color_eyre::Result<()> {
     let ((origin_container, origin_container_ip), (dest_container, dest_container_ip)) =
-        spinup_anvil_testnets().await;
+        spinup_anvil_testnets().await?;
 
     // The relayer itself uses the IPs internal to the Docker network.
     // When it comes time to relay the message, the command is run outside the Docker network,
@@ -182,8 +198,8 @@ async fn relayer() {
     let testnet1_docker_rpc_url = format!("{}:8545", origin_container_ip);
     let testnet2_docker_rpc_url = format!("{}:8545", dest_container_ip);
 
-    let origin_ports = origin_container.ports().await.unwrap();
-    let dest_ports = dest_container.ports().await.unwrap();
+    let origin_ports = origin_container.ports().await?;
+    let dest_ports = dest_container.ports().await?;
 
     let testnet1_host_rpc_url = format!(
         "127.0.0.1:{}",
@@ -198,195 +214,133 @@ async fn relayer() {
         (testnet1_docker_rpc_url, testnet1_host_rpc_url.clone()),
         (testnet2_docker_rpc_url, testnet2_host_rpc_url),
     );
-    let temp_dir_path = tempdir.path();
+    let temp_dir_path = tempdir.path().to_path_buf();
 
-    let tangle = tangle::run().unwrap();
-    let base_path = std::env::current_dir().expect("Failed to get current directory");
-    let base_path = base_path
-        .canonicalize()
-        .expect("File could not be normalized");
+    let harness = TangleTestHarness::setup(tempdir).await?;
 
-    let manifest_path = base_path.join("Cargo.toml");
+    let ctx = HyperlaneContext::new(harness.env().clone(), temp_dir_path.clone()).await?;
 
-    let opts = Opts {
-        pkg_name: option_env!("CARGO_BIN_NAME").map(ToOwned::to_owned),
-        http_rpc_url: format!("http://127.0.0.1:{}", tangle.ws_port()),
-        ws_rpc_url: format!("ws://127.0.0.1:{}", tangle.ws_port()),
-        manifest_path,
-        signer: None,
-        signer_evm: None,
+    let handler = SetConfigEventHandler::new(harness.env(), ctx).await?;
+
+    // Setup service
+    let (mut test_env, service_id) = harness.setup_services().await?;
+    test_env.add_job(handler);
+
+    tokio::spawn(async move {
+        test_env.run_runner().await.unwrap();
+    });
+
+    // Pass the arguments
+    let agent_config_path = std::path::absolute(temp_dir_path.join("agent-config.json"))?;
+    let config_urls = Field::List(BoundedVec(vec![Field::String(BoundedString(BoundedVec(
+        format!("file://{}", agent_config_path.display()).into_bytes(),
+    )))]));
+    let relay_chains = Field::String(BoundedString(BoundedVec(
+        String::from("testnet1,testnet2").into_bytes(),
+    )));
+
+    // Execute job and verify result
+    let results = harness
+        .execute_job(
+            service_id,
+            0,
+            Args::from([config_urls, relay_chains]),
+            vec![OutputValue::Uint64(0)],
+        )
+        .await?;
+
+    assert_eq!(results.service_id, service_id);
+
+    // The relayer is now running, send a message
+    std::env::set_current_dir(temp_dir_path)?;
+    let send_msg_output = Command::new("hyperlane")
+        .args([
+            "send",
+            "message",
+            "--registry",
+            ".",
+            "--origin",
+            "testnet1",
+            "--destination",
+            "testnet2",
+            "--quick",
+        ])
+        .env(
+            "HYP_KEY",
+            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+        )
+        .output()?;
+
+    if !send_msg_output.status.success() {
+        std::mem::forget(origin_container);
+        std::mem::forget(dest_container);
+        std::mem::forget(harness);
+        panic!(
+            "Failed to send test message: {}",
+            String::from_utf8_lossy(&send_msg_output.stdout)
+        );
+    }
+
+    let stdout = String::from_utf8_lossy(&send_msg_output.stdout);
+
+    let mut msg_id = None;
+    for line in String::from_utf8_lossy(&send_msg_output.stdout).lines() {
+        let Some(id) = line.strip_prefix("Message ID: ") else {
+            continue;
+        };
+
+        msg_id = Some(id.to_string());
+        break;
+    }
+
+    let Some(msg_id) = msg_id else {
+        panic!("No message ID found in output: {stdout}")
     };
 
-    const N: usize = 1;
+    logging::info!("Message ID: {msg_id}");
 
-    new_test_ext_blueprint_manager::<N, 1, _, _, _>("", opts, run_test_blueprint_manager)
-        .await
-        .execute_with_async(move |client, handles, svcs| async move {
-            // At this point, blueprint has been deployed, every node has registered
-            // as an operator for the relevant services, and, all gadgets are running
+    // Give the command a few seconds
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-            let keypair = handles[0].sr25519_id().clone();
+    logging::info!("Mining a block");
+    Command::new("cast")
+        .args([
+            "rpc",
+            "anvil_mine",
+            "1",
+            "--rpc-url",
+            &*testnet1_host_rpc_url,
+        ])
+        .output()?;
 
-            let service = svcs.services.last().unwrap();
+    // Give the command a few seconds
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-            let service_id = service.id;
-            let call_id = get_next_call_id(client)
-                .await
-                .expect("Failed to get next job id")
-                .saturating_sub(1);
+    let msg_status_output = Command::new("hyperlane")
+        .args([
+            "status",
+            "--registry",
+            ".",
+            "--origin",
+            "testnet1",
+            "--destination",
+            "testnet2",
+            "--id",
+            &*msg_id,
+        ])
+        .env(
+            "HYP_KEY",
+            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+        )
+        .output()
+        .expect("Failed to run command");
 
-            info!("Submitting job with params service ID: {service_id}, call ID: {call_id}");
-
-            // Pass the arguments
-            let agent_config_path =
-                std::path::absolute(temp_dir_path.join("agent-config.json")).unwrap();
-            let config_urls = Field::List(BoundedVec(vec![Field::String(BoundedString(
-                BoundedVec(format!("file://{}", agent_config_path.display()).into_bytes()),
-            ))]));
-            let relay_chains = Field::String(BoundedString(BoundedVec(
-                String::from("testnet1,testnet2").into_bytes(),
-            )));
-
-            // Next step: submit a job under that service/job id
-            if let Err(err) = submit_job(
-                client,
-                &keypair,
-                service_id,
-                0,
-                Args::from([config_urls, relay_chains]),
-            )
-            .await
-            {
-                error!("Failed to submit job: {err}");
-                panic!("Failed to submit job: {err}");
-            }
-
-            // Step 2: wait for the job to complete
-            let job_results = wait_for_completion_of_tangle_job(client, service_id, call_id, N)
-                .await
-                .expect("Failed to wait for job completion");
-
-            // Step 3: Get the job results, compare to expected value(s)
-            assert_eq!(job_results.service_id, service_id);
-            assert_eq!(job_results.call_id, call_id);
-            assert_eq!(job_results.result[0], Field::Uint64(0));
-
-            // The relayer is now running, send a message
-            std::env::set_current_dir(temp_dir_path).expect("Failed to change directory");
-            let send_msg_output = Command::new("hyperlane")
-                .args([
-                    "send",
-                    "message",
-                    "--registry",
-                    ".",
-                    "--origin",
-                    "testnet1",
-                    "--destination",
-                    "testnet2",
-                    "--quick",
-                ])
-                .env(
-                    "HYP_KEY",
-                    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-                )
-                .output()
-                .expect("Failed to run command");
-
-            if !send_msg_output.status.success() {
-                panic!(
-                    "Failed to send test message: {}",
-                    String::from_utf8_lossy(&send_msg_output.stderr)
-                );
-            }
-
-            let stdout = String::from_utf8_lossy(&send_msg_output.stdout);
-
-            let mut msg_id = None;
-            for line in String::from_utf8_lossy(&send_msg_output.stdout).lines() {
-                let Some(id) = line.strip_prefix("Message ID: ") else {
-                    continue;
-                };
-
-                msg_id = Some(id.to_string());
-                break;
-            }
-
-            let Some(msg_id) = msg_id else {
-                panic!("No message ID found in output: {stdout}")
-            };
-
-            tracing::info!("Message ID: {msg_id}");
-
-            // Give the command a few seconds
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-            tracing::info!("Mining a block");
-            Command::new("cast")
-                .args([
-                    "rpc",
-                    "anvil_mine",
-                    "1",
-                    "--rpc-url",
-                    &*testnet1_host_rpc_url,
-                ])
-                .output()
-                .unwrap();
-
-            // Give the command a few seconds
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
-            let msg_status_output = Command::new("hyperlane")
-                .args([
-                    "status",
-                    "--registry",
-                    ".",
-                    "--origin",
-                    "testnet1",
-                    "--destination",
-                    "testnet2",
-                    "--id",
-                    &*msg_id,
-                ])
-                .env(
-                    "HYP_KEY",
-                    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-                )
-                .output()
-                .expect("Failed to run command");
-
-            assert!(msg_status_output.status.success());
-            assert!(String::from_utf8_lossy(&msg_status_output.stdout)
-                .contains(&format!("Message {msg_id} was delivered")));
-        })
-        .await;
+    assert!(msg_status_output.status.success());
+    assert!(String::from_utf8_lossy(&msg_status_output.stdout)
+        .contains(&format!("Message {msg_id} was delivered")));
 
     drop(origin_container);
     drop(dest_container);
 
-    // Cleanup network
-    let connection = connect_to_docker(None).await.unwrap();
-    let network = connection
-        .inspect_network(
-            "hyperlane_relayer_test_net",
-            None::<InspectNetworkOptions<String>>,
-        )
-        .await
-        .unwrap();
-    for container in network.containers.unwrap().keys() {
-        connection
-            .remove_container(
-                container,
-                Some(RemoveContainerOptions {
-                    force: true,
-                    ..Default::default()
-                }),
-            )
-            .await
-            .unwrap();
-    }
-
-    connection
-        .remove_network("hyperlane_relayer_test_net")
-        .await
-        .unwrap();
+    Ok(())
 }
