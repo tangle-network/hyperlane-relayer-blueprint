@@ -13,26 +13,17 @@ keywords = ["tangle", "blueprint", "avs"]
 rust-version = "1.81"
 
 [dependencies]
-tracing = "0.1"
+blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["tangle", "evm", "macros", "local-store"] }
+dockworker = { path = "../dockworker", features = ["docker"] }
 color-eyre = "0.6"
-tokio = { version = "1.41", default-features = false, features = ["full"] }
-alloy-primitives = "0.7.2"
-reqwest = "0.12.9"
-
-[dependencies.gadget-sdk]
-path = "../gadget/sdk"
-features = ["getrandom"]
+reqwest = "0.12.12"
 
 [dev-dependencies]
-tempfile = "3.10.0"
-alloy-provider = "0.6.4"
-cargo-tangle = { path = "../gadget/cli" }
-blueprint-test-utils = { path = "../gadget/blueprint-test-utils", default-features = false, features = ["std"] }
-testcontainers = "0.20.1"
-tracing-subscriber = "0.3.18"
+blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["testing", "tangle", "evm"] }
+testcontainers = "0.23.1"
 
 [build-dependencies]
-blueprint-metadata = { path = "../gadget/blueprint-metadata" }
+blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["build"] }
 
 [package.metadata.blueprint]
 manager = { Evm = "HyperlaneBlueprint" }
