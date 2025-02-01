@@ -71,6 +71,18 @@ jobs:
       - name: checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Hyperlane CLI
+        run: npm install
+
+      - name: Add ./node_modules/.bin to PATH
+        run: echo "PATH=$PATH:$(pwd)/node_modules/.bin" >> $GITHUB_ENV
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -101,4 +113,4 @@ jobs:
       - uses: taiki-e/github-actions/free-device-space@main
 
       - name: tests
-        run: cargo nextest run
+        run: RUST_LOG=info cargo nextest run

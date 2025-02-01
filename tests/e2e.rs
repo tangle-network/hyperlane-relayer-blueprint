@@ -1,5 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::LazyLock;
 use blueprint_sdk as sdk;
 use blueprint_sdk::logging::setup_log;
 use blueprint_sdk::testing::tempfile;
@@ -10,6 +11,7 @@ use blueprint_sdk::tangle_subxt::tangle_testnet_runtime::api::services::calls::t
 use blueprint_sdk::testing::utils::harness::TestHarness;
 use blueprint_sdk::testing::utils::runner::TestEnv;
 use blueprint_sdk::testing::utils::tangle::{OutputValue, TangleTestHarness};
+use color_eyre::Report;
 use dockworker::bollard::network::{ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions};
 use dockworker::{bollard, DockerBuilder};
 use dockworker::bollard::container::RemoveContainerOptions;
@@ -150,10 +152,25 @@ async fn spinup_anvil_testnets() -> color_eyre::Result<(
     ))
 }
 
+static HYPERLANE_CLI_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+    Path::new(".")
+        .join("node_modules")
+        .join(".bin")
+        .join("hyperlane")
+        .canonicalize()
+        .unwrap()
+});
+
 #[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::needless_return)]
 async fn relayer() -> color_eyre::Result<()> {
     setup_log();
+
+    if !HYPERLANE_CLI_PATH.exists() {
+        return Err(Report::msg(
+            "Hyperlane CLI not found, make sure to run `npm install`!",
+        ));
+    }
 
     // Test logic is separated so that cleanup is performed regardless of failure
     let res = relayer_test_inner().await;
@@ -253,7 +270,7 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
 
     // The relayer is now running, send a message
     std::env::set_current_dir(temp_dir_path)?;
-    let send_msg_output = Command::new("hyperlane")
+    let send_msg_output = Command::new(&*HYPERLANE_CLI_PATH)
         .args([
             "send",
             "message",
@@ -272,13 +289,11 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
         .output()?;
 
     if !send_msg_output.status.success() {
-        std::mem::forget(origin_container);
-        std::mem::forget(dest_container);
-        std::mem::forget(harness);
-        panic!(
+        logging::error!(
             "Failed to send test message: {}",
-            String::from_utf8_lossy(&send_msg_output.stdout)
+            String::from_utf8_lossy(&send_msg_output.stderr)
         );
+        return Err(Report::msg("Failed to send test message"));
     }
 
     let stdout = String::from_utf8_lossy(&send_msg_output.stdout);
@@ -316,15 +331,13 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
     // Give the command a few seconds
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-    let msg_status_output = Command::new("hyperlane")
+    let msg_status_output = Command::new(&*HYPERLANE_CLI_PATH)
         .args([
             "status",
             "--registry",
             ".",
             "--origin",
             "testnet1",
-            "--destination",
-            "testnet2",
             "--id",
             &*msg_id,
         ])
@@ -332,12 +345,25 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
             "HYP_KEY",
             "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
         )
-        .output()
-        .expect("Failed to run command");
+        .output()?;
 
-    assert!(msg_status_output.status.success());
-    assert!(String::from_utf8_lossy(&msg_status_output.stdout)
-        .contains(&format!("Message {msg_id} was delivered")));
+    if !msg_status_output.status.success() {
+        logging::error!(
+            "Failed to check message status: {}",
+            String::from_utf8_lossy(&msg_status_output.stderr)
+        );
+        return Err(Report::msg("Failed to check message status"));
+    }
+
+    if !String::from_utf8_lossy(&msg_status_output.stdout)
+        .contains(&format!("Message {msg_id} was delivered"))
+    {
+        logging::error!(
+            "Message was not delivered: {}",
+            String::from_utf8_lossy(&msg_status_output.stderr)
+        );
+        return Err(Report::msg("Message was not delivered"));
+    }
 
     drop(origin_container);
     drop(dest_container);
