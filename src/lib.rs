@@ -1,49 +1,57 @@
-use alloy_primitives::hex::hex;
+use blueprint_sdk as sdk;
+use blueprint_sdk::crypto::sp_core::SpEcdsa;
+use blueprint_sdk::crypto::tangle_pair_signer::TanglePairSigner;
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
-use gadget_sdk as sdk;
-use gadget_sdk::docker::bollard::network::ConnectNetworkOptions;
-use gadget_sdk::keystore::BackendExt;
-use sdk::config::StdGadgetConfiguration;
-use sdk::ctx::{ServicesContext, TangleClientContext};
-use sdk::docker::{bollard::Docker, connect_to_docker, Container};
-use sdk::event_listener::tangle::jobs::{services_post_processor, services_pre_processor};
-use sdk::event_listener::tangle::TangleEventListener;
+use dockworker::bollard::network::ConnectNetworkOptions;
+use dockworker::container::Container;
+use dockworker::DockerBuilder;
+use sdk::alloy::hex;
+use sdk::config::GadgetConfiguration;
+use sdk::contexts::keystore::KeystoreContext;
+use sdk::event_listeners::tangle::events::TangleEventListener;
+use sdk::event_listeners::tangle::services::{services_post_processor, services_pre_processor};
+use sdk::keystore::backends::Backend;
+use sdk::logging;
+use sdk::macros::contexts::{ServicesContext, TangleClientContext};
 use sdk::tangle_subxt::tangle_testnet_runtime::api::services::events::JobCalled;
+use sdk::tokio;
+use sdk::tokio::sync::Mutex;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
-#[derive(TangleClientContext, ServicesContext)]
+#[derive(Clone, TangleClientContext, ServicesContext)]
 pub struct HyperlaneContext {
     #[config]
-    pub env: StdGadgetConfiguration,
+    pub env: GadgetConfiguration,
+    #[call_id]
+    pub call_id: Option<u64>,
     data_dir: PathBuf,
-    connection: Arc<Docker>,
-    container: Mutex<Option<String>>,
+    connection: Arc<DockerBuilder>,
+    container: Arc<Mutex<Option<String>>>,
 }
 
-const IMAGE: &str = "gcr.io/abacus-labs-dev/hyperlane-agent:main";
+const IMAGE: &str = "gcr.io/abacus-labs-dev/hyperlane-agent:agents-v1.2.0";
 impl HyperlaneContext {
-    pub async fn new(env: StdGadgetConfiguration, data_dir: PathBuf) -> Result<Self> {
-        let connection = connect_to_docker(None).await?;
+    pub async fn new(env: GadgetConfiguration, data_dir: PathBuf) -> Result<Self> {
+        let connection = DockerBuilder::new().await?;
         Ok(Self {
             env,
+            call_id: None,
             data_dir,
-            connection,
-            container: Mutex::new(None),
+            connection: Arc::new(connection),
+            container: Arc::new(Mutex::new(None)),
         })
     }
 
-    #[tracing::instrument(skip_all)]
     async fn spinup_container(&self) -> Result<()> {
         let mut container_guard = self.container.lock().await;
         if container_guard.is_some() {
             return Ok(());
         }
 
-        tracing::info!("Spinning up new container");
+        logging::info!("Spinning up new container");
 
         // TODO: Bollard isn't pulling the image for some reason?
         let output = Command::new("docker").args(["pull", IMAGE]).output()?;
@@ -53,15 +61,19 @@ impl HyperlaneContext {
 
         let mut container = Container::new(&self.connection, IMAGE);
 
-        let keystore = self.env.keystore()?;
-        let ecdsa = keystore.ecdsa_key()?.alloy_key()?;
-        let secret = hex::encode(ecdsa.to_bytes());
+        let keystore = self.env.keystore();
+        let ecdsa_pub = keystore.first_local::<SpEcdsa>()?;
+        let ecdsa_pair = keystore.get_secret::<SpEcdsa>(&ecdsa_pub)?;
+        let tangle_ecdsa_pair = TanglePairSigner::new(ecdsa_pair.0);
+
+        let alloy_key = tangle_ecdsa_pair.alloy_key()?;
+        let secret = hex::encode(alloy_key.to_bytes());
 
         let hyperlane_db_path = self.hyperlane_db_path();
         if !hyperlane_db_path.exists() {
-            tracing::warn!("Hyperlane DB does not exist, creating...");
+            logging::warn!("Hyperlane DB does not exist, creating...");
             std::fs::create_dir_all(&hyperlane_db_path)?;
-            tracing::info!("Hyperlane DB created at `{}`", hyperlane_db_path.display());
+            logging::info!("Hyperlane DB created at `{}`", hyperlane_db_path.display());
         }
 
         let mut binds = vec![format!("{}:/hyperlane_db", hyperlane_db_path.display())];
@@ -142,7 +154,7 @@ impl HyperlaneContext {
     }
 
     async fn revert_configs(&self) -> Result<()> {
-        tracing::error!("Container failed to start with new configs, reverting");
+        logging::error!("Container failed to start with new configs, reverting");
 
         self.remove_existing_container().await?;
 
@@ -154,7 +166,7 @@ impl HyperlaneContext {
 
         let configs_path = self.agent_configs_path();
 
-        tracing::debug!(
+        logging::debug!(
             "Moving `{}` to `{}`",
             original_configs_path.display(),
             configs_path.display()
@@ -165,7 +177,7 @@ impl HyperlaneContext {
         let original_relay_chains = self.original_relay_chains_path();
         if original_relay_chains.exists() {
             let relay_chains_path = self.relay_chains_path();
-            tracing::debug!(
+            logging::debug!(
                 "Moving `{}` to `{}`",
                 original_relay_chains.display(),
                 relay_chains_path.display(),
@@ -180,7 +192,7 @@ impl HyperlaneContext {
     pub async fn remove_existing_container(&self) -> Result<()> {
         let mut container_id = self.container.lock().await;
         if let Some(container_id) = container_id.take() {
-            tracing::warn!("Removing existing container...");
+            logging::warn!("Removing existing container...");
             let mut c = Container::from_id(&self.connection, container_id).await?;
             c.stop().await?;
             c.remove(None).await?;
@@ -215,13 +227,13 @@ impl HyperlaneContext {
     params(config_urls, relay_chains),
     result(_),
     event_listener(
-        listener = TangleEventListener<Arc<HyperlaneContext>, JobCalled>,
+        listener = TangleEventListener<HyperlaneContext, JobCalled>,
         pre_processor = services_pre_processor,
         post_processor = services_post_processor,
     ),
 )]
 pub async fn set_config(
-    ctx: Arc<HyperlaneContext>,
+    ctx: HyperlaneContext,
     config_urls: Option<Vec<String>>,
     relay_chains: String,
 ) -> Result<u64> {
@@ -251,7 +263,7 @@ pub async fn set_config(
     let configs_path = ctx.agent_configs_path();
     if configs_path.exists() {
         let orig_configs_path = ctx.original_agent_configs_path();
-        tracing::info!("Configs path exists, backing up.");
+        logging::info!("Configs path exists, backing up.");
         std::fs::rename(&configs_path, orig_configs_path)?;
         std::fs::create_dir_all(&configs_path)?;
     }
@@ -259,27 +271,27 @@ pub async fn set_config(
     let relay_chains_path = ctx.relay_chains_path();
     if relay_chains_path.exists() {
         let orig_relay_chains_path = ctx.original_relay_chains_path();
-        tracing::info!("Relay chains list exists, backing up.");
+        logging::info!("Relay chains list exists, backing up.");
         std::fs::rename(&relay_chains_path, orig_relay_chains_path)?;
     }
 
     std::fs::create_dir_all(&configs_path)?;
     if configs.is_empty() {
-        tracing::info!("No configs provided, using defaults");
+        logging::info!("No configs provided, using defaults");
     } else {
         // TODO: Limit number of configs?
         for (index, config) in configs.iter().enumerate() {
             std::fs::write(configs_path.join(format!("{index}.json")), config)?;
         }
-        tracing::info!("New configs written to: {}", configs_path.display());
+        logging::info!("New configs written to: {}", configs_path.display());
     }
 
     std::fs::write(&relay_chains_path, relay_chains)?;
-    tracing::info!("Relay chains written to: {}", relay_chains_path.display());
+    logging::info!("Relay chains written to: {}", relay_chains_path.display());
 
     if let Err(e) = ctx.spinup_container().await {
         // Something went wrong spinning up the container, possibly bad config. Try to revert.
-        tracing::error!("{e}");
+        logging::error!("{e}");
         ctx.revert_configs().await?;
     }
 
