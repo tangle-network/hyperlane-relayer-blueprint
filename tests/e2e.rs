@@ -240,7 +240,7 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
     let handler = SetConfigEventHandler::new(harness.env(), ctx).await?;
 
     // Setup service
-    let (mut test_env, service_id) = harness.setup_services().await?;
+    let (mut test_env, service_id, _) = harness.setup_services(false).await?;
     test_env.add_job(handler);
 
     tokio::spawn(async move {
