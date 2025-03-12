@@ -16,7 +16,7 @@ rust-version = "1.81"
 blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["tangle", "evm", "macros", "local-store"] }
 dockworker = { git = "https://github.com/tangle-network/dockworker", features = ["docker"] }
 color-eyre = "0.6"
-reqwest = "0.12.12"
+reqwest = "0.12.13"
 
 [dev-dependencies]
 blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["testing", "tangle", "evm"] }
