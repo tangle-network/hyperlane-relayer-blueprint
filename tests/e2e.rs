@@ -1,30 +1,32 @@
+use blueprint::HyperlaneContext;
+use blueprint_sdk as sdk;
+use blueprint_sdk::Job;
+use blueprint_sdk::tangle::layers::TangleLayer;
+use color_eyre::Report;
+use dockworker::bollard::container::RemoveContainerOptions;
+use dockworker::bollard::network::{
+    ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions,
+};
+use dockworker::{DockerBuilder, bollard};
+use hyperlane_relayer_blueprint_lib as blueprint;
+use sdk::serde::to_field;
+use sdk::tangle_subxt::tangle_testnet_runtime::api::services::calls::types::call::Args;
+use sdk::testing::tempfile;
+use sdk::testing::tempfile::TempDir;
+use sdk::testing::utils::anvil::start_anvil_container;
+use sdk::testing::utils::setup_log;
+use sdk::testing::utils::tangle::{OutputValue, TangleTestHarness};
+use sdk::tokio;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::LazyLock;
-use blueprint_sdk as sdk;
-use blueprint_sdk::logging::setup_log;
-use blueprint_sdk::testing::tempfile;
-use blueprint_sdk::testing::tempfile::TempDir;
-use blueprint_sdk::testing::utils::anvil::start_anvil_testnet;
-use blueprint_sdk::{logging, tokio};
-use blueprint_sdk::tangle_subxt::tangle_testnet_runtime::api::services::calls::types::call::Args;
-use blueprint_sdk::testing::utils::harness::TestHarness;
-use blueprint_sdk::testing::utils::runner::TestEnv;
-use blueprint_sdk::testing::utils::tangle::{OutputValue, TangleTestHarness};
-use color_eyre::Report;
-use dockworker::bollard::network::{ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions};
-use dockworker::{bollard, DockerBuilder};
-use dockworker::bollard::container::RemoveContainerOptions;
-use sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::bounded_collections::bounded_vec::BoundedVec;
-use sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::tangle_primitives::services::field::BoundedString;
-use sdk::tangle_subxt::tangle_testnet_runtime::api::runtime_types::tangle_primitives::services::field::Field;
+use std::sync::{Arc, LazyLock};
 use testcontainers::ContainerAsync;
 use testcontainers::GenericImage;
-use hyperlane_relayer_blueprint::{HyperlaneContext, SetConfigEventHandler};
 
-const AGENT_CONFIG_TEMPLATE_PATH: &str = "./test_assets/agent-config.json.template";
-const CORE_CONFIG_PATH: &str = "./test_assets/core-config.yaml";
-const TEST_ASSETS_PATH: &str = "./test_assets";
+const AGENT_CONFIG_TEMPLATE_PATH: &str = "./tests/assets/agent-config.json.template";
+const CORE_CONFIG_PATH: &str = "./tests/assets/core-config.yaml";
+const TEST_ASSETS_PATH: &str = "./tests/assets";
 
 fn setup_temp_dir(
     (testnet1_docker_rpc_url, testnet1_host_rpc_url): (String, String),
@@ -36,22 +38,22 @@ fn setup_temp_dir(
 
     // Create the registry
     let registry_path = tempdir.path().join("chains");
-    std::fs::create_dir(&registry_path).unwrap();
+    fs::create_dir(&registry_path).unwrap();
 
     for (prefix, rpc_url) in FILE_PREFIXES
         .iter()
         .zip([&*testnet1_host_rpc_url, &*testnet2_host_rpc_url])
     {
         let testnet_path = registry_path.join(prefix);
-        std::fs::create_dir(&testnet_path).unwrap();
+        fs::create_dir(&testnet_path).unwrap();
 
         let addresses_path = Path::new(TEST_ASSETS_PATH).join(format!("{prefix}-addresses.yaml"));
-        std::fs::copy(addresses_path, testnet_path.join("addresses.yaml")).unwrap();
+        fs::copy(addresses_path, testnet_path.join("addresses.yaml")).unwrap();
 
         let metadata_template_path =
             Path::new(TEST_ASSETS_PATH).join(format!("{prefix}-metadata.yaml.template"));
-        let testnet1_metadata = std::fs::read_to_string(metadata_template_path).unwrap();
-        std::fs::write(
+        let testnet1_metadata = fs::read_to_string(metadata_template_path).unwrap();
+        fs::write(
             testnet_path.join("metadata.yaml"),
             testnet1_metadata.replace("{RPC_URL}", rpc_url),
         )
@@ -60,12 +62,12 @@ fn setup_temp_dir(
 
     // Create the core config
     let configs_dir = tempdir.path().join("configs");
-    std::fs::create_dir(&configs_dir).unwrap();
-    std::fs::copy(CORE_CONFIG_PATH, configs_dir.join("core-config.yaml")).unwrap();
+    fs::create_dir(&configs_dir).unwrap();
+    fs::copy(CORE_CONFIG_PATH, configs_dir.join("core-config.yaml")).unwrap();
 
     // Create agent config
-    let agent_config_template = std::fs::read_to_string(AGENT_CONFIG_TEMPLATE_PATH).unwrap();
-    std::fs::write(
+    let agent_config_template = fs::read_to_string(AGENT_CONFIG_TEMPLATE_PATH).unwrap();
+    fs::write(
         tempdir.path().join("agent-config.json"),
         agent_config_template
             .replace("{TESTNET_1_RPC}", &testnet1_docker_rpc_url)
@@ -76,16 +78,26 @@ fn setup_temp_dir(
     tempdir
 }
 
-const TESTNET1_STATE_PATH: &str = "./test_assets/testnet1-state.json";
-const TESTNET2_STATE_PATH: &str = "./test_assets/testnet2-state.json";
+const TESTNET1_STATE_PATH: &str = "./tests/assets/testnet1-state.json";
+const TESTNET2_STATE_PATH: &str = "./tests/assets/testnet2-state.json";
 
-async fn spinup_anvil_testnets() -> color_eyre::Result<(
-    (ContainerAsync<GenericImage>, String),
-    (ContainerAsync<GenericImage>, String),
-)> {
-    let (origin_container, _, _) = start_anvil_testnet(TESTNET1_STATE_PATH, false).await;
+#[allow(dead_code)]
+struct AnvilContainer {
+    container: ContainerAsync<GenericImage>,
+    ip: String,
+    http: String,
+    ws: String,
+    tmp_dir: TempDir,
+}
 
-    let (dest_container, _, _) = start_anvil_testnet(TESTNET2_STATE_PATH, false).await;
+async fn spinup_anvil_testnets() -> color_eyre::Result<(AnvilContainer, AnvilContainer)> {
+    let origin_state = fs::read_to_string(TESTNET1_STATE_PATH)?;
+    let (origin_container, origin_http, origin_ws, origin_tmp_dir) =
+        start_anvil_container(&origin_state, false).await;
+
+    let dest_state = fs::read_to_string(TESTNET2_STATE_PATH)?;
+    let (dest_container, dest_http, dest_ws, dest_tmp_dir) =
+        start_anvil_container(&dest_state, false).await;
 
     let connection = DockerBuilder::new().await?;
     if let Err(e) = connection
@@ -104,23 +116,17 @@ async fn spinup_anvil_testnets() -> color_eyre::Result<(
     }
 
     connection
-        .connect_network(
-            "hyperlane_relayer_test_net",
-            ConnectNetworkOptions {
-                container: origin_container.id(),
-                ..Default::default()
-            },
-        )
+        .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
+            container: origin_container.id(),
+            ..Default::default()
+        })
         .await?;
 
     connection
-        .connect_network(
-            "hyperlane_relayer_test_net",
-            ConnectNetworkOptions {
-                container: dest_container.id(),
-                ..Default::default()
-            },
-        )
+        .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
+            container: dest_container.id(),
+            ..Default::default()
+        })
         .await?;
 
     let origin_container_inspect = connection
@@ -144,11 +150,20 @@ async fn spinup_anvil_testnets() -> color_eyre::Result<(
         .clone();
 
     Ok((
-        (
-            origin_container,
-            origin_network_settings.ip_address.unwrap(),
-        ),
-        (dest_container, dest_network_settings.ip_address.unwrap()),
+        AnvilContainer {
+            container: origin_container,
+            ip: origin_network_settings.ip_address.unwrap(),
+            http: origin_http,
+            ws: origin_ws,
+            tmp_dir: origin_tmp_dir,
+        },
+        AnvilContainer {
+            container: dest_container,
+            ip: dest_network_settings.ip_address.unwrap(),
+            http: dest_http,
+            ws: dest_ws,
+            tmp_dir: dest_tmp_dir,
+        },
     ))
 }
 
@@ -203,8 +218,7 @@ async fn relayer() -> color_eyre::Result<()> {
 }
 
 async fn relayer_test_inner() -> color_eyre::Result<()> {
-    let ((origin_container, origin_container_ip), (dest_container, dest_container_ip)) =
-        spinup_anvil_testnets().await?;
+    let (origin, dest) = spinup_anvil_testnets().await?;
 
     // The relayer itself uses the IPs internal to the Docker network.
     // When it comes time to relay the message, the command is run outside the Docker network,
@@ -212,11 +226,11 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
     //
     // The internal address is written to `agent-config.json`.
     // The host addresses are written to `testnet{1,2}-metadata.yaml`.
-    let testnet1_docker_rpc_url = format!("{}:8545", origin_container_ip);
-    let testnet2_docker_rpc_url = format!("{}:8545", dest_container_ip);
+    let testnet1_docker_rpc_url = format!("{}:8545", origin.ip);
+    let testnet2_docker_rpc_url = format!("{}:8545", dest.ip);
 
-    let origin_ports = origin_container.ports().await?;
-    let dest_ports = dest_container.ports().await?;
+    let origin_ports = origin.container.ports().await?;
+    let dest_ports = dest.container.ports().await?;
 
     let testnet1_host_rpc_url = format!(
         "127.0.0.1:{}",
@@ -235,36 +249,33 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
 
     let harness = TangleTestHarness::setup(tempdir).await?;
 
-    let ctx = HyperlaneContext::new(harness.env().clone(), temp_dir_path.clone()).await?;
-
-    let handler = SetConfigEventHandler::new(harness.env(), ctx).await?;
+    let ctx = Arc::new(HyperlaneContext::new(harness.env().clone(), temp_dir_path.clone()).await?);
+    let harness = harness.set_context(ctx);
 
     // Setup service
-    let (mut test_env, service_id, _) = harness.setup_services(false).await?;
-    test_env.add_job(handler);
+    let (mut test_env, service_id, _) = harness.setup_services::<1>(false).await?;
+    test_env.initialize().await?;
 
-    tokio::spawn(async move {
-        test_env.run_runner().await.unwrap();
-    });
+    test_env
+        .add_job(blueprint::set_config.layer(TangleLayer))
+        .await;
+    test_env.start().await?;
 
     // Pass the arguments
     let agent_config_path = std::path::absolute(temp_dir_path.join("agent-config.json"))?;
-    let config_urls = Field::List(BoundedVec(vec![Field::String(BoundedString(BoundedVec(
-        format!("file://{}", agent_config_path.display()).into_bytes(),
-    )))]));
-    let relay_chains = Field::String(BoundedString(BoundedVec(
-        String::from("testnet1,testnet2").into_bytes(),
-    )));
+    let config_urls = to_field(Some(vec![format!(
+        "file://{}",
+        agent_config_path.display()
+    )]))?;
+    let relay_chains = to_field(String::from("testnet1,testnet2"))?;
 
     // Execute job and verify result
-    let results = harness
-        .execute_job(
-            service_id,
-            0,
-            Args::from([config_urls, relay_chains]),
-            vec![OutputValue::Uint64(0)],
-        )
+    let call = harness
+        .submit_job(service_id, 0, Args::from([config_urls, relay_chains]))
         .await?;
+
+    let results = harness.wait_for_job_execution(0, call).await?;
+    harness.verify_job(&results, vec![OutputValue::Uint64(0)]);
 
     assert_eq!(results.service_id, service_id);
 
@@ -289,7 +300,7 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
         .output()?;
 
     if !send_msg_output.status.success() {
-        logging::error!(
+        sdk::error!(
             "Failed to send test message: {}",
             String::from_utf8_lossy(&send_msg_output.stderr)
         );
@@ -312,12 +323,12 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
         panic!("No message ID found in output: {stdout}")
     };
 
-    logging::info!("Message ID: {msg_id}");
+    sdk::info!("Message ID: {msg_id}");
 
     // Give the command a few seconds
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-    logging::info!("Mining a block");
+    sdk::info!("Mining a block");
     Command::new("cast")
         .args([
             "rpc",
@@ -348,7 +359,7 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
         .output()?;
 
     if !msg_status_output.status.success() {
-        logging::error!(
+        sdk::error!(
             "Failed to check message status: {}",
             String::from_utf8_lossy(&msg_status_output.stderr)
         );
@@ -358,15 +369,12 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
     if !String::from_utf8_lossy(&msg_status_output.stdout)
         .contains(&format!("Message {msg_id} was delivered"))
     {
-        logging::error!(
+        sdk::error!(
             "Message was not delivered: {}",
             String::from_utf8_lossy(&msg_status_output.stderr)
         );
         return Err(Report::msg("Message was not delivered"));
     }
-
-    drop(origin_container);
-    drop(dest_container);
 
     Ok(())
 }

@@ -1,32 +1,33 @@
 use blueprint_sdk as sdk;
-use blueprint_sdk::crypto::sp_core::SpEcdsa;
-use blueprint_sdk::crypto::tangle_pair_signer::TanglePairSigner;
-use color_eyre::eyre::eyre;
 use color_eyre::Result;
+use color_eyre::eyre::eyre;
+use dockworker::DockerBuilder;
 use dockworker::bollard::network::ConnectNetworkOptions;
 use dockworker::container::Container;
-use dockworker::DockerBuilder;
 use sdk::alloy::hex;
-use sdk::config::GadgetConfiguration;
-use sdk::contexts::keystore::KeystoreContext;
-use sdk::event_listeners::tangle::events::TangleEventListener;
-use sdk::event_listeners::tangle::services::{services_post_processor, services_pre_processor};
+use sdk::crypto::sp_core::SpEcdsa;
+use sdk::crypto::tangle_pair_signer::TanglePairSigner;
+use sdk::extract::Context;
 use sdk::keystore::backends::Backend;
-use sdk::logging;
-use sdk::macros::contexts::{ServicesContext, TangleClientContext};
-use sdk::tangle_subxt::tangle_testnet_runtime::api::services::events::JobCalled;
+use sdk::macros::context::{ServicesContext, TangleClientContext};
+use sdk::runner::config::BlueprintEnvironment;
+use sdk::tangle::extract::TangleResult;
+use sdk::tangle::extract::{List, Optional, TangleArgs2};
 use sdk::tokio;
 use sdk::tokio::sync::Mutex;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+
+pub fn default_data_dir() -> PathBuf {
+    const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+    Path::new(MANIFEST_DIR).join("data")
+}
 
 #[derive(Clone, TangleClientContext, ServicesContext)]
 pub struct HyperlaneContext {
     #[config]
-    pub env: GadgetConfiguration,
-    #[call_id]
-    pub call_id: Option<u64>,
+    pub env: BlueprintEnvironment,
     data_dir: PathBuf,
     connection: Arc<DockerBuilder>,
     container: Arc<Mutex<Option<String>>>,
@@ -34,11 +35,10 @@ pub struct HyperlaneContext {
 
 const IMAGE: &str = "gcr.io/abacus-labs-dev/hyperlane-agent:agents-v1.2.0";
 impl HyperlaneContext {
-    pub async fn new(env: GadgetConfiguration, data_dir: PathBuf) -> Result<Self> {
+    pub async fn new(env: BlueprintEnvironment, data_dir: PathBuf) -> Result<Self> {
         let connection = DockerBuilder::new().await?;
         Ok(Self {
             env,
-            call_id: None,
             data_dir,
             connection: Arc::new(connection),
             container: Arc::new(Mutex::new(None)),
@@ -51,7 +51,7 @@ impl HyperlaneContext {
             return Ok(());
         }
 
-        logging::info!("Spinning up new container");
+        sdk::info!("Spinning up new container");
 
         // TODO: Bollard isn't pulling the image for some reason?
         let output = Command::new("docker").args(["pull", IMAGE]).output()?;
@@ -71,9 +71,9 @@ impl HyperlaneContext {
 
         let hyperlane_db_path = self.hyperlane_db_path();
         if !hyperlane_db_path.exists() {
-            logging::warn!("Hyperlane DB does not exist, creating...");
+            sdk::warn!("Hyperlane DB does not exist, creating...");
             std::fs::create_dir_all(&hyperlane_db_path)?;
-            logging::info!("Hyperlane DB created at `{}`", hyperlane_db_path.display());
+            sdk::info!("Hyperlane DB created at `{}`", hyperlane_db_path.display());
         }
 
         let mut binds = vec![format!("{}:/hyperlane_db", hyperlane_db_path.display())];
@@ -127,13 +127,10 @@ impl HyperlaneContext {
         if self.env.test_mode {
             let id = container.id().unwrap();
             self.connection
-                .connect_network(
-                    "hyperlane_relayer_test_net",
-                    ConnectNetworkOptions {
-                        container: id,
-                        ..Default::default()
-                    },
-                )
+                .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
+                    container: id,
+                    ..Default::default()
+                })
                 .await?;
         }
 
@@ -150,11 +147,13 @@ impl HyperlaneContext {
             return Err(eyre!("Failed to start container, config error?"));
         }
 
+        sdk::info!("Successfully started container");
+
         Ok(())
     }
 
     async fn revert_configs(&self) -> Result<()> {
-        logging::error!("Container failed to start with new configs, reverting");
+        sdk::error!("Container failed to start with new configs, reverting");
 
         self.remove_existing_container().await?;
 
@@ -166,7 +165,7 @@ impl HyperlaneContext {
 
         let configs_path = self.agent_configs_path();
 
-        logging::debug!(
+        sdk::debug!(
             "Moving `{}` to `{}`",
             original_configs_path.display(),
             configs_path.display()
@@ -177,7 +176,7 @@ impl HyperlaneContext {
         let original_relay_chains = self.original_relay_chains_path();
         if original_relay_chains.exists() {
             let relay_chains_path = self.relay_chains_path();
-            logging::debug!(
+            sdk::debug!(
                 "Moving `{}` to `{}`",
                 original_relay_chains.display(),
                 relay_chains_path.display(),
@@ -192,7 +191,7 @@ impl HyperlaneContext {
     pub async fn remove_existing_container(&self) -> Result<()> {
         let mut container_id = self.container.lock().await;
         if let Some(container_id) = container_id.take() {
-            logging::warn!("Removing existing container...");
+            sdk::warn!("Removing existing container...");
             let mut c = Container::from_id(&self.connection, container_id).await?;
             c.stop().await?;
             c.remove(None).await?;
@@ -222,23 +221,14 @@ impl HyperlaneContext {
     }
 }
 
-#[sdk::job(
-    id = 0,
-    params(config_urls, relay_chains),
-    result(_),
-    event_listener(
-        listener = TangleEventListener<HyperlaneContext, JobCalled>,
-        pre_processor = services_pre_processor,
-        post_processor = services_post_processor,
-    ),
-)]
+pub const SET_CONFIG_JOB_ID: u8 = 0;
+
 pub async fn set_config(
-    ctx: HyperlaneContext,
-    config_urls: Option<Vec<String>>,
-    relay_chains: String,
-) -> Result<u64> {
+    Context(ctx): Context<Arc<HyperlaneContext>>,
+    TangleArgs2(Optional(config_urls), relay_chains): TangleArgs2<Optional<List<String>>, String>,
+) -> Result<TangleResult<u64>> {
     let mut configs = Vec::new();
-    if let Some(config_urls) = config_urls {
+    if let Some(List(config_urls)) = config_urls {
         for config_url in config_urls {
             // https://github.com/seanmonstar/reqwest/issues/178
             let url = reqwest::Url::parse(&config_url)?;
@@ -263,7 +253,7 @@ pub async fn set_config(
     let configs_path = ctx.agent_configs_path();
     if configs_path.exists() {
         let orig_configs_path = ctx.original_agent_configs_path();
-        logging::info!("Configs path exists, backing up.");
+        sdk::info!("Configs path exists, backing up.");
         std::fs::rename(&configs_path, orig_configs_path)?;
         std::fs::create_dir_all(&configs_path)?;
     }
@@ -271,29 +261,29 @@ pub async fn set_config(
     let relay_chains_path = ctx.relay_chains_path();
     if relay_chains_path.exists() {
         let orig_relay_chains_path = ctx.original_relay_chains_path();
-        logging::info!("Relay chains list exists, backing up.");
+        sdk::info!("Relay chains list exists, backing up.");
         std::fs::rename(&relay_chains_path, orig_relay_chains_path)?;
     }
 
     std::fs::create_dir_all(&configs_path)?;
     if configs.is_empty() {
-        logging::info!("No configs provided, using defaults");
+        sdk::info!("No configs provided, using defaults");
     } else {
         // TODO: Limit number of configs?
         for (index, config) in configs.iter().enumerate() {
             std::fs::write(configs_path.join(format!("{index}.json")), config)?;
         }
-        logging::info!("New configs written to: {}", configs_path.display());
+        sdk::info!("New configs written to: {}", configs_path.display());
     }
 
     std::fs::write(&relay_chains_path, relay_chains)?;
-    logging::info!("Relay chains written to: {}", relay_chains_path.display());
+    sdk::info!("Relay chains written to: {}", relay_chains_path.display());
 
     if let Err(e) = ctx.spinup_container().await {
         // Something went wrong spinning up the container, possibly bad config. Try to revert.
-        logging::error!("{e}");
+        sdk::error!("{e}");
         ctx.revert_configs().await?;
     }
 
-    Ok(0)
+    Ok(TangleResult(0))
 }
