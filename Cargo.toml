@@ -1,7 +1,31 @@
 [package]
-name = "hyperlane-relayer-blueprint"
+name = "hyperlane-relayer-blueprint-lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[dependencies]
+blueprint-sdk = { workspace = true, features = ["tangle", "evm", "macros"] }
+color-eyre.workspace = true
+reqwest.workspace = true
+dockworker = { workspace = true, features = ["docker"] }
+
+[dev-dependencies]
+blueprint-sdk = { workspace = true, features = ["testing", "evm"] }
+testcontainers.workspace = true
+
+[workspace]
+members = ["hyperlane-relayer-bin", "."]
+
+[workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "A Tangle Blueprint (AVS) for deploying Hyperlane relayers"
 authors = ["Webb Technologies Inc."]
 license = "MIT OR Apache-2.0"
@@ -10,20 +34,16 @@ repository = "https://github.com/tangle-network/hyperlane-relayers-blueprint"
 readme = "README.md"
 categories = ["cryptography", "cryptography::cryptocurrencies"]
 keywords = ["tangle", "blueprint", "avs"]
-rust-version = "1.81"
 
-[dependencies]
-blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["tangle", "evm", "macros", "local-store"] }
+[workspace.dependencies]
+# Our blueprint
+hyperlane-relayer-blueprint-lib = { path = "." }
+
+blueprint-sdk = { git = "https://github.com/tangle-network/blueprint", features = ["tangle", "evm", "macros", "local-store"] }
 dockworker = { git = "https://github.com/tangle-network/dockworker", features = ["docker"] }
 color-eyre = "0.6"
 reqwest = "0.12.12"
-
-[dev-dependencies]
-blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["testing", "tangle", "evm"] }
 testcontainers = "0.23.1"
-
-[build-dependencies]
-blueprint-sdk = { git = "https://github.com/tangle-network/gadget", features = ["build"] }
-
-[package.metadata.blueprint]
-manager = { Evm = "HyperlaneBlueprint" }
+tokio = "1.44.1"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"

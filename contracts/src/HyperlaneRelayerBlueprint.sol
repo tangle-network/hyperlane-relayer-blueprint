@@ -4,10 +4,10 @@ pragma solidity >=0.8.13;
 import "tnt-core/BlueprintServiceManagerBase.sol";
 
 /**
- * @title HyperlaneBlueprint
+ * @title HyperlaneRelayerBlueprint
  * @dev This contract is a blueprint for a Hyperlane Relayer deployment.
  */
-contract HyperlaneBlueprint is BlueprintServiceManagerBase {
+contract HyperlaneRelayerBlueprint is BlueprintServiceManagerBase {
     /**
      * @dev Converts a public key to an operator address.
      * @param publicKey The public key to convert.
