@@ -42,7 +42,7 @@ hyperlane-relayer-blueprint-lib = { path = "." }
 blueprint-sdk = { git = "https://github.com/tangle-network/blueprint", features = ["tangle", "evm", "macros", "local-store"] }
 dockworker = { git = "https://github.com/tangle-network/dockworker", features = ["docker"] }
 color-eyre = "0.6"
-reqwest = "0.12.12"
+reqwest = "0.12.15"
 testcontainers = "0.23.1"
 tokio = "1.44.1"
 tracing = "0.1.41"
