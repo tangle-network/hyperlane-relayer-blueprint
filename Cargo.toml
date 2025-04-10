@@ -14,7 +14,7 @@ keywords.workspace = true
 blueprint-sdk = { workspace = true, features = ["tangle", "evm", "macros"] }
 color-eyre.workspace = true
 reqwest.workspace = true
-dockworker = { workspace = true, features = ["docker"] }
+docktopus = { workspace = true, features = ["deploy"] }
 
 [dev-dependencies]
 blueprint-sdk = { workspace = true, features = ["testing", "evm"] }
@@ -39,8 +39,8 @@ keywords = ["tangle", "blueprint", "avs"]
 # Our blueprint
 hyperlane-relayer-blueprint-lib = { path = "." }
 
-blueprint-sdk = { git = "https://github.com/tangle-network/blueprint", features = ["tangle", "evm", "macros", "local-store"] }
-dockworker = { git = "https://github.com/tangle-network/dockworker", features = ["docker"] }
+blueprint-sdk = { version = "0.1.0-alpha.1", features = ["tangle", "evm", "macros", "local-store"] }
+docktopus = { version = "0.1.0" }
 color-eyre = "0.6"
 reqwest = "0.12.12"
 testcontainers = "0.23.1"
