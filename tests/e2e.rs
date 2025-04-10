@@ -1,19 +1,20 @@
 use blueprint::HyperlaneContext;
 use blueprint_sdk as sdk;
-use blueprint_sdk::Job;
-use blueprint_sdk::tangle::layers::TangleLayer;
 use color_eyre::Report;
-use dockworker::bollard::container::RemoveContainerOptions;
-use dockworker::bollard::network::{
+use docktopus::bollard::container::RemoveContainerOptions;
+use docktopus::bollard::network::{
     ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions,
 };
-use dockworker::{DockerBuilder, bollard};
+use docktopus::{DockerBuilder, bollard};
 use hyperlane_relayer_blueprint_lib as blueprint;
-use sdk::serde::to_field;
+use sdk::Job;
+use sdk::tangle::layers::TangleLayer;
+use sdk::tangle::serde::to_field;
 use sdk::tangle_subxt::tangle_testnet_runtime::api::services::calls::types::call::Args;
+use sdk::testing::chain_setup::anvil::AnvilTestnet;
+use sdk::testing::chain_setup::anvil::start_anvil_container;
 use sdk::testing::tempfile;
 use sdk::testing::tempfile::TempDir;
-use sdk::testing::utils::anvil::start_anvil_container;
 use sdk::testing::utils::setup_log;
 use sdk::testing::utils::tangle::{OutputValue, TangleTestHarness};
 use sdk::tokio;
@@ -21,8 +22,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, LazyLock};
-use testcontainers::ContainerAsync;
-use testcontainers::GenericImage;
 
 const AGENT_CONFIG_TEMPLATE_PATH: &str = "./tests/assets/agent-config.json.template";
 const CORE_CONFIG_PATH: &str = "./tests/assets/core-config.yaml";
@@ -83,21 +82,16 @@ const TESTNET2_STATE_PATH: &str = "./tests/assets/testnet2-state.json";
 
 #[allow(dead_code)]
 struct AnvilContainer {
-    container: ContainerAsync<GenericImage>,
+    inner: AnvilTestnet,
     ip: String,
-    http: String,
-    ws: String,
-    tmp_dir: TempDir,
 }
 
 async fn spinup_anvil_testnets() -> color_eyre::Result<(AnvilContainer, AnvilContainer)> {
     let origin_state = fs::read_to_string(TESTNET1_STATE_PATH)?;
-    let (origin_container, origin_http, origin_ws, origin_tmp_dir) =
-        start_anvil_container(&origin_state, false).await;
+    let origin_testnet = start_anvil_container(Some(&origin_state), false).await;
 
     let dest_state = fs::read_to_string(TESTNET2_STATE_PATH)?;
-    let (dest_container, dest_http, dest_ws, dest_tmp_dir) =
-        start_anvil_container(&dest_state, false).await;
+    let dest_testnet = start_anvil_container(Some(&dest_state), false).await;
 
     let connection = DockerBuilder::new().await?;
     if let Err(e) = connection
@@ -117,20 +111,20 @@ async fn spinup_anvil_testnets() -> color_eyre::Result<(AnvilContainer, AnvilCon
 
     connection
         .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
-            container: origin_container.id(),
+            container: origin_testnet.container.id(),
             ..Default::default()
         })
         .await?;
 
     connection
         .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
-            container: dest_container.id(),
+            container: dest_testnet.container.id(),
             ..Default::default()
         })
         .await?;
 
     let origin_container_inspect = connection
-        .inspect_container(origin_container.id(), None)
+        .inspect_container(origin_testnet.container.id(), None)
         .await?;
     let origin_network_settings = origin_container_inspect
         .network_settings
@@ -140,7 +134,7 @@ async fn spinup_anvil_testnets() -> color_eyre::Result<(AnvilContainer, AnvilCon
         .clone();
 
     let dest_container_inspect = connection
-        .inspect_container(dest_container.id(), None)
+        .inspect_container(dest_testnet.container.id(), None)
         .await?;
     let dest_network_settings = dest_container_inspect
         .network_settings
@@ -151,18 +145,12 @@ async fn spinup_anvil_testnets() -> color_eyre::Result<(AnvilContainer, AnvilCon
 
     Ok((
         AnvilContainer {
-            container: origin_container,
+            inner: origin_testnet,
             ip: origin_network_settings.ip_address.unwrap(),
-            http: origin_http,
-            ws: origin_ws,
-            tmp_dir: origin_tmp_dir,
         },
         AnvilContainer {
-            container: dest_container,
+            inner: dest_testnet,
             ip: dest_network_settings.ip_address.unwrap(),
-            http: dest_http,
-            ws: dest_ws,
-            tmp_dir: dest_tmp_dir,
         },
     ))
 }
@@ -229,8 +217,8 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
     let testnet1_docker_rpc_url = format!("{}:8545", origin.ip);
     let testnet2_docker_rpc_url = format!("{}:8545", dest.ip);
 
-    let origin_ports = origin.container.ports().await?;
-    let dest_ports = dest.container.ports().await?;
+    let origin_ports = origin.inner.container.ports().await?;
+    let dest_ports = dest.inner.container.ports().await?;
 
     let testnet1_host_rpc_url = format!(
         "127.0.0.1:{}",
@@ -249,9 +237,6 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
 
     let harness = TangleTestHarness::setup(tempdir).await?;
 
-    let ctx = Arc::new(HyperlaneContext::new(harness.env().clone(), temp_dir_path.clone()).await?);
-    let harness = harness.set_context(ctx);
-
     // Setup service
     let (mut test_env, service_id, _) = harness.setup_services::<1>(false).await?;
     test_env.initialize().await?;
@@ -259,7 +244,9 @@ async fn relayer_test_inner() -> color_eyre::Result<()> {
     test_env
         .add_job(blueprint::set_config.layer(TangleLayer))
         .await;
-    test_env.start().await?;
+
+    let ctx = Arc::new(HyperlaneContext::new(harness.env().clone(), temp_dir_path.clone()).await?);
+    test_env.start(ctx).await?;
 
     // Pass the arguments
     let agent_config_path = std::path::absolute(temp_dir_path.join("agent-config.json"))?;
