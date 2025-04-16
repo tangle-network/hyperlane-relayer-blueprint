@@ -39,8 +39,8 @@ keywords = ["tangle", "blueprint", "avs"]
 # Our blueprint
 hyperlane-relayer-blueprint-lib = { path = "." }
 
-blueprint-sdk = { version = "0.1.0-alpha.4", features = ["tangle", "evm", "macros", "local-store"] }
-docktopus = { version = "0.1.0" }
+blueprint-sdk = { version = "0.1.0-alpha.5", features = ["tangle", "evm", "macros", "local-store"] }
+docktopus = { version = "0.2.0" }
 color-eyre = "0.6"
 reqwest = "0.12.12"
 testcontainers = "0.23.1"

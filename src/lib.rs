@@ -59,7 +59,7 @@ impl HyperlaneContext {
             return Err(eyre!("Docker pull failed"));
         }
 
-        let mut container = Container::new(&self.connection, IMAGE);
+        let mut container = Container::new(self.connection.client(), IMAGE);
 
         let keystore = self.env.keystore();
         let ecdsa_pub = keystore.first_local::<SpEcdsa>()?;
@@ -192,7 +192,7 @@ impl HyperlaneContext {
         let mut container_id = self.container.lock().await;
         if let Some(container_id) = container_id.take() {
             sdk::warn!("Removing existing container...");
-            let mut c = Container::from_id(&self.connection, container_id).await?;
+            let mut c = Container::from_id(self.connection.client(), container_id).await?;
             c.stop().await?;
             c.remove(None).await?;
         }
