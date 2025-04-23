@@ -112,25 +112,25 @@ impl HyperlaneContext {
             env.push(format!("HYP_RELAYCHAINS={relay_chains}"));
         }
 
-        container
-            .env(env)
-            .binds(binds)
-            .cmd([
-                "./relayer",
-                "--db /hyperlane_db",
-                "--defaultSigner.key",
-                &format!("0x{secret}"),
-            ])
-            .create()
-            .await?;
+        container = container.env(env).binds(binds).cmd([
+            "./relayer",
+            "--db /hyperlane_db",
+            "--defaultSigner.key",
+            &format!("0x{secret}"),
+        ]);
+
+        container.create().await?;
 
         if self.env.test_mode {
             let id = container.id().unwrap();
             self.connection
-                .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
-                    container: id,
-                    ..Default::default()
-                })
+                .connect_network(
+                    "hyperlane_relayer_test_net",
+                    ConnectNetworkOptions {
+                        container: id,
+                        ..Default::default()
+                    },
+                )
                 .await?;
         }
 

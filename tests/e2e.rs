@@ -110,17 +110,23 @@ async fn spinup_anvil_testnets() -> color_eyre::Result<(AnvilContainer, AnvilCon
     }
 
     connection
-        .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
-            container: origin_testnet.container.id(),
-            ..Default::default()
-        })
+        .connect_network(
+            "hyperlane_relayer_test_net",
+            ConnectNetworkOptions {
+                container: origin_testnet.container.id(),
+                ..Default::default()
+            },
+        )
         .await?;
 
     connection
-        .connect_network("hyperlane_relayer_test_net", ConnectNetworkOptions {
-            container: dest_testnet.container.id(),
-            ..Default::default()
-        })
+        .connect_network(
+            "hyperlane_relayer_test_net",
+            ConnectNetworkOptions {
+                container: dest_testnet.container.id(),
+                ..Default::default()
+            },
+        )
         .await?;
 
     let origin_container_inspect = connection
