@@ -5208,9 +5208,9 @@ dependencies = [
 
 [[package]]
 name = "docktopus"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c90e5d912e601b76903b1329ecc40e56942d21c790ba6265a7b28812bebfd11"
+checksum = "38ebd0fc2fac3d9226624268d24a40bee7f72711be05be83523ff5128c5aefc2"
 dependencies = [
  "async-trait",
  "bollard",
