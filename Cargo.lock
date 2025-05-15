@@ -485,7 +485,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-stream",
- "tower",
+ "tower 0.5.2",
  "tracing",
 ]
 
@@ -532,7 +532,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-stream",
- "tower",
+ "tower 0.5.2",
  "tracing",
  "tracing-futures",
  "url",
@@ -832,7 +832,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tower",
+ "tower 0.5.2",
  "tracing",
  "url",
  "wasmtimer",
@@ -848,7 +848,7 @@ dependencies = [
  "alloy-transport",
  "reqwest 0.12.15",
  "serde_json",
- "tower",
+ "tower 0.5.2",
  "tracing",
  "url",
 ]
@@ -2025,7 +2025,7 @@ dependencies = [
  "rustls-native-certs 0.8.1",
  "rustls-pki-types",
  "tokio",
- "tower",
+ "tower 0.5.2",
  "tracing",
 ]
 
@@ -2128,6 +2128,51 @@ dependencies = [
  "aws-smithy-types",
  "rustc_version 0.4.1",
  "tracing",
+]
+
+[[package]]
+name = "axum"
+version = "0.6.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b829e4e32b91e643de6eafe82b1d90675f5874230191a4ffbc1b336dec4d6bf"
+dependencies = [
+ "async-trait",
+ "axum-core",
+ "bitflags 1.3.2",
+ "bytes",
+ "futures-util",
+ "http 0.2.12",
+ "http-body 0.4.6",
+ "hyper 0.14.32",
+ "itoa",
+ "matchit",
+ "memchr",
+ "mime",
+ "percent-encoding",
+ "pin-project-lite",
+ "rustversion",
+ "serde",
+ "sync_wrapper 0.1.2",
+ "tower 0.4.13",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
+name = "axum-core"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "759fa577a247914fd3f7f76d62972792636412fbfd634cd452f6a385a74d2d2c"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "futures-util",
+ "http 0.2.12",
+ "http-body 0.4.6",
+ "mime",
+ "rustversion",
+ "tower-layer",
+ "tower-service",
 ]
 
 [[package]]
@@ -2437,9 +2482,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-anvil-testing-utils"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "233eba999572d6e535ccaecef0dd6e8381641e4fce478feb8c2e2a13b3f9e2d1"
+checksum = "30f96f0c8a8b61ac8fd6f73913908df8b5a89425f62a934e5e28097fd5eb1549"
 dependencies = [
  "alloy-primitives 0.8.25",
  "alloy-provider",
@@ -2455,18 +2500,18 @@ dependencies = [
 
 [[package]]
 name = "blueprint-build-utils"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e52a0a312ac29a005d3be2742ce43dc45a9fb4f6308798ef373954030cd38e9"
+checksum = "7b427a3953e6c7cee6d622f96ea74cb4e81cbc83da156aacd3fc851b09d6cf03"
 dependencies = [
  "blueprint-std",
 ]
 
 [[package]]
 name = "blueprint-chain-setup"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9d0e4c5cf9e922e54303cb5ad37d4537568573c963b4ef098f977820340039f"
+checksum = "e6e75f6d0afae02bc08f465aeb7d408acc2a8c81f98883302bdfc8aaab8412be"
 dependencies = [
  "blueprint-chain-setup-anvil",
  "blueprint-chain-setup-common",
@@ -2475,9 +2520,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-chain-setup-anvil"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecb76d043747cd2da970bfaf2f8e7bc853d59a117e8bdc4f25b0cb57636e260e"
+checksum = "9cd3a61703464b47a072fecd372888aa447734142d9aed7ddea9128dc2491ff7"
 dependencies = [
  "alloy-contract",
  "alloy-provider",
@@ -2497,9 +2542,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-chain-setup-common"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48a8ef4d33dfc547d22e0026ac4d0d94ca05d194aa6b8c712bf3be00c4f193d4"
+checksum = "8d3c217b3777e94c3d549fa109ad5b6ecdce59d30a988feb28746a95b154d6c1"
 dependencies = [
  "alloy-signer-local",
  "blueprint-clients",
@@ -2518,9 +2563,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-chain-setup-tangle"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08ed7db4ea873645d25bf42384ef8e48f466e59024fb335f581b61e49346413f"
+checksum = "c914338de5488c488cbb81255190cca3b62d057756a5603720304d66d266f194"
 dependencies = [
  "alloy-json-abi",
  "alloy-network",
@@ -2556,9 +2601,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-client-core"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9443ea2202917e5aa4e8aed9a69ae9ba60c447319f0e13b76a5ad31b2e4d0251"
+checksum = "9ffb31a795b6e0b257b875c6e86dd6ee9ba27e3aacf324a6eec5e14ca9581c84"
 dependencies = [
  "auto_impl",
  "blueprint-std",
@@ -2567,9 +2612,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-client-eigenlayer"
-version = "0.1.0-alpha.6"
+version = "0.1.0-alpha.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf0a90182e5f58891110936109f10be046f7aded47dc00a024c08157556a2266"
+checksum = "40d3c34b851bc47a44b9654244d600f994bd66fccdfbd4982f887daaf6da1899"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -2591,9 +2636,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-client-evm"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dad7d30210a19e1fb7b0c43fc6dafdbb8eb3c153c04619cbfa3178a46f4705f3"
+checksum = "a66429a9925db456f8cfda27178089421c26b75916431583d27c36c6a47910f5"
 dependencies = [
  "alloy-consensus",
  "alloy-json-rpc",
@@ -2619,9 +2664,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-client-tangle"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee1b4519aba101f77ea5a5232b1b3dbe25a66853999ca4ca86aecddc5359ce33"
+checksum = "85cd7b95b89d958284807b7e07bb60a2ffbd1f7b10d086e04835cc596c4639a6"
 dependencies = [
  "auto_impl",
  "blueprint-client-core",
@@ -2640,9 +2685,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-clients"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e98672c7f8b22d950d623e797085883109d0295d23deec2a5cb977699b8d2c77"
+checksum = "6ee77fe11a203bc4d93d6d4f68508328565a403470f861d8a0ef6a33511990fb"
 dependencies = [
  "blueprint-client-core",
  "blueprint-client-eigenlayer",
@@ -2654,9 +2699,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-context-derive"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "036c80cad8d33763830978dd19796e31ad035dcb5ec03d3b9b50c9db5ceafb06"
+checksum = "c0b3563d10fa074efb45dac0b9ecd85c07b046fb3c706037d24e8a549002640f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2665,9 +2710,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-contexts"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e3a50e7b0e07d0c2f7ffdae775ba74d5e2066159a99c9aab0c0949c4eafb880"
+checksum = "1dc2e1b642bc2fcd1a931991df4d2b6a879e427359a45642da0906c509f0e567"
 dependencies = [
  "blueprint-clients",
  "blueprint-keystore",
@@ -2679,24 +2724,24 @@ dependencies = [
 
 [[package]]
 name = "blueprint-core"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "091ab8184c0df11ef570e5477f2dede35e322c62bc53e7ac1489de2898ca0bf7"
+checksum = "a771f173517c28540c93fb1b198d1a1d9c4a428ce3ca541eb4f71500c74c7399"
 dependencies = [
  "bytes",
  "futures-util",
  "hashbrown 0.15.2",
  "pin-project-lite",
  "tiny-keccak",
- "tower",
+ "tower 0.5.2",
  "tracing",
 ]
 
 [[package]]
 name = "blueprint-core-testing-utils"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06d43e17defb81f2ef1ac928bcc0b9c9f7b13535fe6321ca17e8cd2768eae983"
+checksum = "d159b8be6149b4c2cbc0943edba2687163136e15d4bce1ac0ea849ec4371886a"
 dependencies = [
  "blueprint-clients",
  "blueprint-core",
@@ -2712,9 +2757,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb1be60f04d9c45d6c2f52bf0f7c56257a6ba2e8c37d6d8469c73249fe8809bf"
+checksum = "6284b35d2efc17a181b5f7fa6510fe0216aff7a4ace2de8362d5b052b0835b53"
 dependencies = [
  "blueprint-crypto-bls",
  "blueprint-crypto-bn254",
@@ -2730,9 +2775,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-bls"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f527fbc46092a910b65e862665b635ac61aa9c5bbca7f1189e3231706903bee5"
+checksum = "e4baae5a88889a22ca71c0bec559794c1b6ab00017f51f7332338befa81ecfce"
 dependencies = [
  "ark-serialize 0.5.0",
  "blueprint-crypto-core",
@@ -2747,9 +2792,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-bn254"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a89026bcd7f1416b68f94eb90e1a8d6d4557a5142dd6cb010a45f078e7e56f8"
+checksum = "d06dcc267fc40ec6e16ab0fd6e5e2d43ceba6961c2fef765af6edb438c2161d0"
 dependencies = [
  "ark-bn254",
  "ark-ec 0.5.0",
@@ -2768,9 +2813,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-core"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7128853c9ed401f2f20998e5aedc913e0f9c8b9e7837536c01e9eec9dda341be"
+checksum = "426dd08edc3f0fd815fb6026de1998689d929a419b673f8039d4b1fa070ffaa1"
 dependencies = [
  "blueprint-std",
  "clap",
@@ -2780,9 +2825,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-ed25519"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47193b647bc260b18f9db094d51c93f65cb98344f77ab628f63bb3cf244ec808"
+checksum = "5fc558acf5b219650b92a5465a51c355a4a74c5ad11862768917e5aec7e204fb"
 dependencies = [
  "blueprint-crypto-core",
  "blueprint-std",
@@ -2795,9 +2840,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-hashing"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce16cb29af376f3bc7c4b4f9e15a78241638ff378daa6e8b1fb182980a7621b5"
+checksum = "9ab05b5aad02c582df8a86b3b4a52ed653449c0342ec90e32e3b0cb87f59eeaa"
 dependencies = [
  "blake3",
  "blueprint-std",
@@ -2807,9 +2852,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-k256"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15b31e86b82b56d1ef93fd80f048433777104b5c7467aa7b47d07658b0fc0862"
+checksum = "0fd04323bc8b591ae0cf547b5c96e9549064946a6020944dfe71e25d69471657"
 dependencies = [
  "alloy-primitives 0.8.25",
  "alloy-signer-local",
@@ -2824,9 +2869,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-sp-core"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03a0b5523d1080dfeb6edd5001d428280cad55a5454b4aff1138333a6773d9dc"
+checksum = "abadfd51aaf9ff8bf23ed39b57c248afbbdfe6fece1d34a1b7cd979a5a97be9c"
 dependencies = [
  "ark-ec 0.5.0",
  "ark-ff 0.5.0",
@@ -2845,9 +2890,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-sr25519"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ab6ef26989e4b40ee6cd57a453268d20fb93d5c54c6fe399e044bcbce5e162a"
+checksum = "082ebd7b41c7795307d9575d82190c927949f460a595779004b1d61566131cf8"
 dependencies = [
  "blueprint-crypto-core",
  "blueprint-std",
@@ -2860,9 +2905,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-crypto-tangle-pair-signer"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b6642aecbf495c6b092326b8f80b515aa403a3e7bcbba89ec3b1e49e535fb70"
+checksum = "2de63477cb1e7a929d062260bda6581388a4ef744e9962f92acaa13743b52ddc"
 dependencies = [
  "alloy-primitives 0.8.25",
  "alloy-signer-local",
@@ -2879,9 +2924,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-eigenlayer-extra"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b825559b585109ca2e3bfd25c981d087c7c45677403ccd6791bf203e050fcd83"
+checksum = "49c78364f2ab61aa719d3e9d6fbbc18c52ab98f7016843efeedef17e0e87901c"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -2908,9 +2953,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-evm-extra"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d2fb6fe180b26ba6e770ea0dc993e9db737b45088d2a62bb54ebe3b01d0664c"
+checksum = "143fbe9f9dd8546f805fdcbe96e2b7f53a5f5d8a1191ae7013b2042e6f373cd4"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -2934,15 +2979,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tower",
+ "tower 0.5.2",
  "url",
 ]
 
 [[package]]
 name = "blueprint-keystore"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad3fb0a08d2617dc8ca4db7f8ae264addd22653fe006a97824827acdaf16006d"
+checksum = "f172700d59ed7f145940356dc42ef7d651a11baef9ce084123f3a143855f3d70"
 dependencies = [
  "alloy-network",
  "alloy-primitives 0.8.25",
@@ -2983,9 +3028,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-macros"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cccbcdd684da9c6e7af4315c33a4c785aa29c9a292864c1386ad1fcf7d3c474"
+checksum = "b032be90fea596d246d39f5872d6865a1b4871804184b59bdfb1fd5f1c74e458"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2995,51 +3040,94 @@ dependencies = [
 
 [[package]]
 name = "blueprint-metrics-rpc-calls"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5943d556bf30fa6d16b429e40fd05b6161d0e53d44b4dd63c636fadb903525b"
+checksum = "5bec663413f2dced5d0d918b4c99b43c98374eb93e0f8d30566475c81df529ab"
 dependencies = [
  "metrics",
 ]
 
 [[package]]
 name = "blueprint-networking"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d907425ae756ab74a8772a39204c03c138ca78b6798bb529fb20232cec65c0ab"
+checksum = "6fe87bd00a88fa657e637d9a00ce0d5b477fdfb4fd39c5b8c6368752439ca921"
 dependencies = [
  "alloy-primitives 0.8.25",
- "anyhow",
- "auto_impl",
  "bincode",
- "blake3",
+ "blueprint-core",
  "blueprint-crypto",
- "blueprint-crypto-core",
  "blueprint-std",
  "crossbeam-channel",
  "dashmap",
  "futures",
  "hex",
- "itertools 0.14.0",
  "k256",
  "libp2p",
  "libsecp256k1",
- "lru-mem",
  "parking_lot 0.12.3",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tokio-stream",
- "tracing",
  "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
-name = "blueprint-producers-extra"
-version = "0.1.0-alpha.2"
+name = "blueprint-pricing-engine"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0533636d02951699fad473e0178ab858a79b94786fa5905996f07f4f62376be8"
+checksum = "e2b9f67b94ac93b120f4d42bef41f4ce2fad8e83b7ac61d79c37a819e92f654c"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "blueprint-core",
+ "blueprint-crypto",
+ "blueprint-crypto-core",
+ "blueprint-keystore",
+ "blueprint-networking",
+ "blueprint-std",
+ "blueprint-tangle-extra",
+ "chrono",
+ "clap",
+ "crossbeam-channel",
+ "futures",
+ "hex",
+ "jsonrpsee",
+ "libc",
+ "libp2p",
+ "log",
+ "num_cpus",
+ "parity-scale-codec",
+ "prost",
+ "rand 0.8.5",
+ "rust_decimal",
+ "scale-info",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha2 0.10.8",
+ "sp-core",
+ "sp-io",
+ "sysinfo",
+ "tangle-subxt",
+ "thiserror 2.0.12",
+ "time",
+ "tiny-keccak",
+ "tokio",
+ "toml 0.8.20",
+ "tonic",
+ "tonic-build",
+ "tracing",
+ "tracing-subscriber 0.3.19",
+ "uuid 1.16.0",
+]
+
+[[package]]
+name = "blueprint-producers-extra"
+version = "0.1.0-alpha.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f810a7a8e4b6eff5ccfc2a5acf9e1df92acf1a6d5061297f41f6e09c71f0217b"
 dependencies = [
  "blueprint-core",
  "document-features",
@@ -3048,9 +3136,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-router"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44371686a31a89e9c888560ba877948a12a9971ad06599c1ccdc44742659a1c1"
+checksum = "ec6cfbbf40afbb3af4bc797558d2cea7947f3068bda0a2ebcdf992c619527ead"
 dependencies = [
  "blueprint-core",
  "bytes",
@@ -3058,14 +3146,14 @@ dependencies = [
  "futures",
  "hashbrown 0.15.2",
  "pin-project-lite",
- "tower",
+ "tower 0.5.2",
 ]
 
 [[package]]
 name = "blueprint-runner"
-version = "0.1.0-alpha.6"
+version = "0.1.0-alpha.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b313d09484383915cb04e3801de6fbae06730989c5e221e72d22a32250649de4"
+checksum = "87a9ebcf3a373a9149590c41a8c8d3a6f1a4d47a2f6ed702b65609a42696511d"
 dependencies = [
  "alloy-contract",
  "alloy-primitives 0.8.25",
@@ -3094,16 +3182,16 @@ dependencies = [
  "tangle-subxt",
  "thiserror 2.0.12",
  "tokio",
- "tower",
+ "tower 0.5.2",
  "tracing",
  "url",
 ]
 
 [[package]]
 name = "blueprint-sdk"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2ca912304eafa763ebfe46e59a8ab376e222d7010b5c9d3a3da1eb8729a81ae"
+checksum = "2384eee9fd464d89655f36178c640ccd510bcf1b4bbf6321bb86200a11ee59af"
 dependencies = [
  "alloy",
  "alloy-json-abi",
@@ -3136,9 +3224,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-std"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b64be572320206fbf6731b8a19399c0b89678904867249877e36fee73f66dd18"
+checksum = "3a8e3d28ac1af8b820cc74bdd4a830b5d6d620678dd4b2ebdcb42357b102f1fb"
 dependencies = [
  "colored",
  "num-traits",
@@ -3148,9 +3236,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-store-local-database"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5370a483e4a28022ecab3c7292553af79150a5b68527d8b29a6748df8782cac"
+checksum = "8ea31a7450cc9bb76df533de3218ff776aebe67dd4d2dc12489452d7b74b843f"
 dependencies = [
  "blueprint-std",
  "serde",
@@ -3160,19 +3248,20 @@ dependencies = [
 
 [[package]]
 name = "blueprint-stores"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f232b3b124f1bf476ebbf4c55b6c0410c812e01549088e706c2014c2573da7"
+checksum = "3df85d2fe3d996d5bedc1f0eac11f625d353720c757f714fdf9142d9e7a1770d"
 dependencies = [
  "blueprint-store-local-database",
+ "document-features",
  "thiserror 2.0.12",
 ]
 
 [[package]]
 name = "blueprint-tangle-extra"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7db4d5464c1c9c1f5378eaae4fabe414a038da2e6b84aabe5bdbf186cf05511d"
+checksum = "9bf38c1272dcbb35cd7b09d24f85c542a7053392e87d1f8b0cf4685bd134c867"
 dependencies = [
  "blueprint-core",
  "bytes",
@@ -3186,14 +3275,14 @@ dependencies = [
  "serde_json",
  "tangle-subxt",
  "thiserror 2.0.12",
- "tower",
+ "tower 0.5.2",
 ]
 
 [[package]]
 name = "blueprint-tangle-testing-utils"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4c9a4e1c1b9cefb05f65ef05572f6397ff58bceadc44193a781a11609dfbacf"
+checksum = "d8cac2354eb41b289115b4c2ed51e0e334219189006f285908b240bf29e9a41b"
 dependencies = [
  "alloy-primitives 0.8.25",
  "alloy-signer-local",
@@ -3204,6 +3293,7 @@ dependencies = [
  "blueprint-core-testing-utils",
  "blueprint-crypto-tangle-pair-signer",
  "blueprint-keystore",
+ "blueprint-pricing-engine",
  "blueprint-runner",
  "blueprint-std",
  "blueprint-tangle-extra",
@@ -3219,9 +3309,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-testing-utils"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad79f2772c774d0f8e8a4864bf9f4e36c61035c23abde17cfde25921d27a3c47"
+checksum = "db1eb1f07fc1deb167f409b6f1ee53b9497d054f530a70d082cdda64683517e3"
 dependencies = [
  "blueprint-anvil-testing-utils",
  "blueprint-core-testing-utils",
@@ -3864,9 +3954,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.37"
+version = "4.5.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eccb054f56cbd38340b380d4a8e69ef1f02f1af43db2f0cc817a4774d80ae071"
+checksum = "ed93b9805f8ba930df42c2590f05453d5ec36cbb85d018868a5b24d31f6ac000"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -3874,9 +3964,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.37"
+version = "4.5.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efd9466fac8543255d3b1fcad4762c5e116ffe808c8a3043d4263cd4fd4862a2"
+checksum = "379026ff283facf611b0ea629334361c4211d1b12ee01024eec1591133b04120"
 dependencies = [
  "anstream",
  "anstyle",
@@ -7378,12 +7468,25 @@ dependencies = [
  "http 1.3.1",
  "hyper 1.6.0",
  "hyper-util",
+ "log",
  "rustls 0.23.26",
  "rustls-native-certs 0.8.1",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls 0.26.2",
  "tower-service",
+]
+
+[[package]]
+name = "hyper-timeout"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
+dependencies = [
+ "hyper 0.14.32",
+ "pin-project-lite",
+ "tokio",
+ "tokio-io-timeout",
 ]
 
 [[package]]
@@ -8042,8 +8145,13 @@ checksum = "37b26c20e2178756451cfeb0661fb74c47dd5988cb7e3939de7e9241fd604d42"
 dependencies = [
  "jsonrpsee-client-transport",
  "jsonrpsee-core",
+ "jsonrpsee-http-client",
+ "jsonrpsee-proc-macros",
+ "jsonrpsee-server",
  "jsonrpsee-types",
  "jsonrpsee-ws-client",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8076,16 +8184,87 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "456196007ca3a14db478346f58c7238028d55ee15c1df15115596e411ff27925"
 dependencies = [
  "async-trait",
+ "bytes",
  "futures-timer",
  "futures-util",
+ "http 1.3.1",
+ "http-body 1.0.1",
+ "http-body-util",
  "jsonrpsee-types",
+ "parking_lot 0.12.3",
  "pin-project",
+ "rand 0.8.5",
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "jsonrpsee-http-client"
+version = "0.24.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c872b6c9961a4ccc543e321bb5b89f6b2d2c7fe8b61906918273a3333c95400c"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "http-body 1.0.1",
+ "hyper 1.6.0",
+ "hyper-rustls 0.27.5",
+ "hyper-util",
+ "jsonrpsee-core",
+ "jsonrpsee-types",
+ "rustls 0.23.26",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower 0.4.13",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "jsonrpsee-proc-macros"
+version = "0.24.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e65763c942dfc9358146571911b0cd1c361c2d63e2d2305622d40d36376ca80"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
+name = "jsonrpsee-server"
+version = "0.24.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55e363146da18e50ad2b51a0a7925fc423137a0b1371af8235b1c231a0647328"
+dependencies = [
+ "futures-util",
+ "http 1.3.1",
+ "http-body 1.0.1",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "jsonrpsee-core",
+ "jsonrpsee-types",
+ "pin-project",
+ "route-recognizer",
+ "serde",
+ "serde_json",
+ "soketto",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tokio-util 0.7.14",
+ "tower 0.4.13",
  "tracing",
 ]
 
@@ -8894,15 +9073,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lru-mem"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf5c8c26d903a41c80d4cc171940a57a4d1bc51139ebd6aad87e2f9ae3774780"
-dependencies = [
- "hashbrown 0.14.5",
-]
-
-[[package]]
 name = "mach"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8978,6 +9148,12 @@ checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
 dependencies = [
  "regex-automata 0.1.10",
 ]
+
+[[package]]
+name = "matchit"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "matrixmultiply"
@@ -9170,6 +9346,12 @@ dependencies = [
  "serde",
  "unsigned-varint 0.8.0",
 ]
+
+[[package]]
+name = "multimap"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
 name = "multistream-select"
@@ -12874,6 +13056,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "deb1435c188b76130da55f17a466d252ff7b1418b2ad3e037d127b94e3411f29"
+dependencies = [
+ "bytes",
+ "prost-derive",
+]
+
+[[package]]
+name = "prost-build"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22505a5c94da8e3b7c2996394d1c933236c4d743e81a410bcca4e6989fc066a4"
+dependencies = [
+ "bytes",
+ "heck 0.5.0",
+ "itertools 0.12.1",
+ "log",
+ "multimap",
+ "once_cell",
+ "petgraph",
+ "prettyplease",
+ "prost",
+ "prost-types",
+ "regex",
+ "syn 2.0.100",
+ "tempfile",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81bddcdb20abf9501610992b6759a4c888aef7d1a7247ef75e2404275ac24af1"
+dependencies = [
+ "anyhow",
+ "itertools 0.12.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9091c90b0a32608e984ff2fa4091273cbdd755d54935c51d520887f4a1dbd5b0"
+dependencies = [
+ "prost",
+]
+
+[[package]]
 name = "psm"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13320,7 +13555,7 @@ dependencies = [
  "system-configuration 0.6.1",
  "tokio",
  "tokio-native-tls",
- "tower",
+ "tower 0.5.2",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -13426,6 +13661,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "route-recognizer"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afab94fb28594581f62d981211a9a4d53cc8130bbcbbb89a0440d9b8e81a7746"
+
+[[package]]
 name = "rtnetlink"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13502,6 +13743,17 @@ dependencies = [
  "thiserror 1.0.69",
  "unicode-normalization",
  "uuid 0.8.2",
+]
+
+[[package]]
+name = "rust_decimal"
+version = "1.37.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "faa7de2ba56ac291bd90c6b9bece784a52ae1411f9506544b3eae36dd2356d50"
+dependencies = [
+ "arrayvec 0.7.6",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -15075,6 +15327,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "futures",
+ "http 1.3.1",
  "httparse",
  "log",
  "rand 0.8.5",
@@ -16516,9 +16769,9 @@ checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 
 [[package]]
 name = "tangle-subxt"
-version = "0.15.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96a67cb08b9287064e14221a69ddec5db1f3dcc59e831510beef7c284ca3714d"
+checksum = "70808ede5e0d819cf40787c3aeecc88fbf7bd8cea7e335c005dba9f2a0d388a8"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -16779,9 +17032,9 @@ dependencies = [
 
 [[package]]
 name = "tnt-core-bytecode"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2720c6e903ef89a610b5aa82f37d4034f987c59bdc30fb6198d96d0dc6182106"
+checksum = "f3ce001313334d1db412784b7c46bb7f3dd571fe4502563c528120dea80b302f"
 dependencies = [
  "serde_json",
 ]
@@ -16802,6 +17055,16 @@ dependencies = [
  "socket2",
  "tokio-macros",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "tokio-io-timeout"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30b74022ada614a1b4834de765f9bb43877f910cc8ce4be40e89042c9223a8bf"
+dependencies = [
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
@@ -16972,6 +17235,66 @@ dependencies = [
  "serde_spanned",
  "toml_datetime",
  "winnow",
+]
+
+[[package]]
+name = "tonic"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76c4eb7a4e9ef9d4763600161f12f5070b92a578e1b634db88a6887844c91a13"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum",
+ "base64 0.21.7",
+ "bytes",
+ "h2 0.3.26",
+ "http 0.2.12",
+ "http-body 0.4.6",
+ "hyper 0.14.32",
+ "hyper-timeout",
+ "percent-encoding",
+ "pin-project",
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tower 0.4.13",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "tonic-build"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be4ef6dd70a610078cb4e338a0f79d06bc759ff1b22d2120c2ff02ae264ba9c2"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
+name = "tower"
+version = "0.4.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8fa9be0de6cf49e536ce1851f987bd21a43b771b09473c3549a6c853db37c1c"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "indexmap 1.9.3",
+ "pin-project",
+ "pin-project-lite",
+ "rand 0.8.5",
+ "slab",
+ "tokio",
+ "tokio-util 0.7.14",
+ "tower-layer",
+ "tower-service",
+ "tracing",
 ]
 
 [[package]]
